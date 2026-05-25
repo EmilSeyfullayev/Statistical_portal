@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}{{ module.name }} - Ministry Portal{% endblock %}
+
+{% block content %}
+<section class="hero compact">
+    <div>
+        <p class="eyebrow">Module</p>
+        <h1>{{ module.name }}</h1>
+        <p>{{ module.description|default:"Choose a submodule to view reports and operational actions." }}</p>
+    </div>
+</section>
+
+<section>
+    <h2>Submodules</h2>
+    <div class="card-grid">
+        {% for submodule in module.submodules.all %}
+            {% if submodule.is_active %}
+                <a class="card" href="{{ submodule.get_absolute_url }}">
+                    <span class="card-kicker">Submodule</span>
+                    <h3>{{ submodule.name }}</h3>
+                </a>
+            {% endif %}
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Sync Result - Ministry Portal{% endblock %}
+
+{% block content %}
+<section class="hero compact">
+    <div>
+        <p class="eyebrow">Folder synchronization</p>
+        <h1>Sync {{ sync_job.status }}</h1>
+        <p>{{ sync_job.files_found }} found, {{ sync_job.files_existing }} existing, {{ sync_job.files_uploaded }} uploaded.</p>
+    </div>
+</section>
+
+{% if sync_job.error_message %}
+    <section class="message error">{{ sync_job.error_message }}</section>
+{% endif %}
+
+<section class="panel">
+    <h2>Files</h2>
+    <table>
+        <thead><tr><th>File</th><th>Action</th><th>Message</th></tr></thead>
+        <tbody>
+            {% for item in sync_job.files.all %}
+                <tr><td>{{ item.file_name }}</td><td>{{ item.action }}</td><td>{{ item.message }}</td></tr>
+            {% empty %}
+                <tr><td colspan="3">No matching files were found.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% endblock %}

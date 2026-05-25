@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Ministry Portal{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div>
+        <p class="eyebrow">Internal network</p>
+        <h1>Ministry reporting dashboard</h1>
+        <p>Synchronize Excel data, import records, open dashboards, and download Microsoft Word reports.</p>
+    </div>
+</section>
+
+<section>
+    <h2>Main dashboards</h2>
+    <div class="card-grid">
+        {% for dashboard in dashboards %}
+            <a class="card" href="{% url 'dashboard:dashboard_detail' dashboard.slug %}">
+                <span class="card-kicker">Dashboard</span>
+                <h3>{{ dashboard.name }}</h3>
+                <p>{{ dashboard.description|default:"High-level analytical view and linked reports." }}</p>
+            </a>
+        {% empty %}
+            <p>No dashboards configured yet. Run <code>python manage.py seed_portal</code>.</p>
+        {% endfor %}
+    </div>
+</section>
+
+<section>
+    <h2>Modules</h2>
+    <div class="card-grid">
+        {% for module in modules %}
+            <a class="card" href="{{ module.get_absolute_url }}">
+                <span class="card-kicker">Module</span>
+                <h3>{{ module.name }}</h3>
+                <p>{{ module.submodules.count }} submodules</p>
+            </a>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

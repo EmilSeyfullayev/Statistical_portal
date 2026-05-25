@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}{{ dashboard.name }} - Ministry Portal{% endblock %}
+
+{% block content %}
+<section class="hero compact">
+    <div>
+        <p class="eyebrow">Dashboard</p>
+        <h1>{{ dashboard.name }}</h1>
+        <p>{{ dashboard.description|default:"Dashboard statistics and linked module reports will appear here." }}</p>
+    </div>
+</section>
+
+<section class="panel">
+    <h2>Linked modules</h2>
+    <div class="card-grid">
+        {% for module in dashboard.modules.all %}
+            <a class="card" href="{{ module.get_absolute_url }}"><h3>{{ module.name }}</h3></a>
+        {% empty %}
+            <p>This dashboard is ready for linked modules and future charts.</p>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

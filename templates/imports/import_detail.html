@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}Import Result - Ministry Portal{% endblock %}
+
+{% block content %}
+<section class="hero compact">
+    <div>
+        <p class="eyebrow">Database import</p>
+        <h1>Import {{ job.status }}</h1>
+        <p>{{ job.rows_imported }} rows imported from {{ job.stored_file.original_name }}.</p>
+    </div>
+</section>
+
+{% if job.error_message %}
+    <section class="message error">{{ job.error_message }}</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,7 @@
+Django
+django-environ
+pandas
+openpyxl
+psycopg[binary]
+python-docx
+reportlab
