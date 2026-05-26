@@ -11,6 +11,7 @@ from apps.imports.services.transit_merge import TRANSIT_SCHEMA, quote_name, qual
 
 MERGED_TABLE = "transit_merged"
 PORTAL_TABLE = "transit_data_for_portal"
+DASHBOARD_TABLE = "transit_for_dashboard_on_ministry_portal"
 
 RAW_COLUMNS: list[str] = [
     "GIRIS_TARIXI",
@@ -82,6 +83,24 @@ FINAL_GROUP_COLUMNS: list[str] = [
     "Başlangıc-Təyinat ölkəsi",
 ]
 
+DASHBOARD_COLUMNS: list[str] = [
+    "Gömrük giriş postu",
+    "Çıxış tarixi",
+    "Gömrük çıxış postu",
+    "Göndərən ölkə",
+    "Təyinat ölkə",
+    "Dəhliz (istiqamətlə)",
+    "Dəhliz",
+    "Nəqliyyat növü",
+    "Məhsul adı (qısaldılmış)",
+    "Məhsul qrupu (qısaldılmış)",
+    "Yük həcmi (ton)",
+]
+
+DASHBOARD_GROUP_COLUMNS: list[str] = [
+    column for column in DASHBOARD_COLUMNS if column != "Yük həcmi (ton)"
+]
+
 DEHLIZ_REPLACE_MAPPING: dict[str, str] = {
     "SERQ": "Şərq",
     "QERB": "Qərb",
@@ -123,6 +142,14 @@ class PortalRebuildResult:
     portal_table: str
     source_row_count: int
     portal_row_count: int
+
+
+@dataclass(frozen=True)
+class DashboardRebuildResult:
+    source_table: str
+    dashboard_table: str
+    source_row_count: int
+    dashboard_row_count: int
 
 
 class MissingColumnsError(ValueError):
@@ -406,6 +433,55 @@ def replace_portal_table(df: pd.DataFrame) -> None:
         )
 
 
+def dashboard_group_select_sql() -> str:
+    group_columns = ", ".join(quote_name(column) for column in DASHBOARD_GROUP_COLUMNS)
+    return (
+        f"{group_columns}, "
+        f"SUM(COALESCE({quote_name('Yük həcmi (ton)')}, 0))::double precision "
+        f"AS {quote_name('Yük həcmi (ton)')}"
+    )
+
+
+def replace_dashboard_table() -> int:
+    source_table = qualified_name(TRANSIT_SCHEMA, PORTAL_TABLE)
+    dashboard_table = qualified_name(TRANSIT_SCHEMA, DASHBOARD_TABLE)
+    group_columns = ", ".join(quote_name(column) for column in DASHBOARD_GROUP_COLUMNS)
+
+    with connection.cursor() as cursor:
+        cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {quote_name(TRANSIT_SCHEMA)}")
+        cursor.execute(f"DROP TABLE IF EXISTS {dashboard_table}")
+        cursor.execute(
+            f"""
+            CREATE TABLE {dashboard_table} AS
+            SELECT {dashboard_group_select_sql()}
+            FROM {source_table}
+            GROUP BY {group_columns}
+            """
+        )
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS {quote_name(f'{DASHBOARD_TABLE}_cixis_tarixi_idx')} "
+            f"ON {dashboard_table} ({quote_name('Çıxış tarixi')})"
+        )
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS {quote_name(f'{DASHBOARD_TABLE}_neqliyyat_idx')} "
+            f"ON {dashboard_table} ({quote_name('Nəqliyyat növü')})"
+        )
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS {quote_name(f'{DASHBOARD_TABLE}_dehliz_idx')} "
+            f"ON {dashboard_table} ({quote_name('Dəhliz')})"
+        )
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS {quote_name(f'{DASHBOARD_TABLE}_country_idx')} "
+            f"ON {dashboard_table} ({quote_name('Göndərən ölkə')}, {quote_name('Təyinat ölkə')})"
+        )
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS {quote_name(f'{DASHBOARD_TABLE}_product_group_idx')} "
+            f"ON {dashboard_table} ({quote_name('Məhsul qrupu (qısaldılmış)')})"
+        )
+        cursor.execute(f"SELECT count(*) FROM {dashboard_table}")
+        return cursor.fetchone()[0]
+
+
 def rebuild_transit_data_for_portal(*, dayfirst: bool = False) -> PortalRebuildResult:
     source_df = read_merged_transit_frame()
     portal_df = process_transit_data(source_df, dayfirst=dayfirst)
@@ -415,4 +491,18 @@ def rebuild_transit_data_for_portal(*, dayfirst: bool = False) -> PortalRebuildR
         portal_table=f"{TRANSIT_SCHEMA}.{PORTAL_TABLE}",
         source_row_count=len(source_df),
         portal_row_count=len(portal_df),
+    )
+
+
+def rebuild_transit_dashboard_table() -> DashboardRebuildResult:
+    source_table = qualified_name(TRANSIT_SCHEMA, PORTAL_TABLE)
+    with connection.cursor() as cursor:
+        cursor.execute(f"SELECT count(*) FROM {source_table}")
+        source_row_count = cursor.fetchone()[0]
+    dashboard_row_count = replace_dashboard_table()
+    return DashboardRebuildResult(
+        source_table=f"{TRANSIT_SCHEMA}.{PORTAL_TABLE}",
+        dashboard_table=f"{TRANSIT_SCHEMA}.{DASHBOARD_TABLE}",
+        source_row_count=source_row_count,
+        dashboard_row_count=dashboard_row_count,
     )

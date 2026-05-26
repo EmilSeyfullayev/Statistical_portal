@@ -1,7 +1,10 @@
 from django.core.management.base import BaseCommand
 
 from apps.imports.services.transit_merge import OMITTED_SOURCE_TABLES, rebuild_transit_merged
-from apps.imports.services.transit_portal import rebuild_transit_data_for_portal
+from apps.imports.services.transit_portal import (
+    rebuild_transit_dashboard_table,
+    rebuild_transit_data_for_portal,
+)
 
 
 class Command(BaseCommand):
@@ -11,7 +14,10 @@ class Command(BaseCommand):
         parser.add_argument(
             "--with-portal-table",
             action="store_true",
-            help="Also rebuild transit.transit_data_for_portal from transit.transit_merged.",
+            help=(
+                "Also rebuild transit.transit_data_for_portal from transit.transit_merged "
+                "and recreate the lightweight dashboard table."
+            ),
         )
 
     def handle(self, *args, **options):
@@ -31,5 +37,13 @@ class Command(BaseCommand):
                     f"Rebuilt {portal_result.portal_table} from {portal_result.source_table} "
                     f"with {portal_result.portal_row_count} rows "
                     f"({portal_result.source_row_count} source rows)."
+                )
+            )
+            dashboard_result = rebuild_transit_dashboard_table()
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"Rebuilt {dashboard_result.dashboard_table} from {dashboard_result.source_table} "
+                    f"with {dashboard_result.dashboard_row_count} rows "
+                    f"({dashboard_result.source_row_count} source rows)."
                 )
             )

@@ -7,16 +7,217 @@
     <div>
         <p class="eyebrow">{{ submodule.module.name }}</p>
         <h1>{{ submodule.name }}</h1>
-        <p>View and download available reports for this submodule.</p>
+        {% if transit_dynamics_report %}
+            <p>Tranzit daşımaların əsas dinamika göstəriciləri.</p>
+        {% else %}
+            <p>View and download available reports for this submodule.</p>
+        {% endif %}
     </div>
 </section>
+
+{% if transit_dynamics_report %}
+    {% if not transit_dynamics_report.available %}
+        <section class="panel">
+            <h2>Hesabat hazır deyil</h2>
+            <p class="muted">{{ transit_dynamics_report.message }}</p>
+        </section>
+    {% else %}
+        <section class="panel report-panel">
+            <article class="report-section">
+                <h2>1. Nəqliyyat növü üzrə tranzit daşımalar, {{ transit_dynamics_report.unit }}</h2>
+                <div class="report-narrative">
+                    <p>
+                        <strong>{{ transit_dynamics_report.annual_years.current }}-ci ildə tranzit daşımaların həcmi
+                        {{ transit_dynamics_report.transport.annual_sentence.value }} ({{ transit_dynamics_report.transport.annual_sentence.change }}) min ton təşkil etmişdir.</strong>
+                    </p>
+                    <ul>
+                        {% for item in transit_dynamics_report.transport.bullets_annual %}
+                            <li>
+                                <strong>{{ item.label }} ilə:</strong>
+                                {{ item.value }} min ton
+                                <span class="report-dynamic {{ item.direction }}">({{ item.change }})</span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                    <p>
+                        <strong>{{ transit_dynamics_report.partial_years.label }} tranzit daşımaların həcmi
+                        {{ transit_dynamics_report.transport.partial_sentence.value }} ({{ transit_dynamics_report.transport.partial_sentence.change }}) min ton təşkil etmişdir:</strong>
+                    </p>
+                    <ul>
+                        {% for item in transit_dynamics_report.transport.bullets_partial %}
+                            <li>
+                                <strong>{{ item.label }} ilə:</strong>
+                                {{ item.value }} min ton
+                                <span class="report-dynamic {{ item.direction }}">({{ item.change }})</span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                <div class="report-table-wrap">
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>Nəqliyyat növü</th>
+                                <th>{{ transit_dynamics_report.annual_years.previous }}</th>
+                                <th>{{ transit_dynamics_report.annual_years.current }}</th>
+                                <th>{{ transit_dynamics_report.partial_years.previous }}</th>
+                                <th>{{ transit_dynamics_report.partial_years.current }}</th>
+                                <th>Dinamika</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in transit_dynamics_report.transport.rows %}
+                                <tr>
+                                    <td>{{ row.label }}</td>
+                                    <td>{{ row.annual_previous }}</td>
+                                    <td>{{ row.annual_current }}</td>
+                                    <td>{{ row.partial_previous }}</td>
+                                    <td>{{ row.partial_current }}</td>
+                                    <td class="report-dynamic {{ row.dynamic_direction }}">{{ row.dynamic }}</td>
+                                </tr>
+                            {% endfor %}
+                            <tr class="report-total-row">
+                                <td>{{ transit_dynamics_report.transport.total.label }}</td>
+                                <td>{{ transit_dynamics_report.transport.total.annual_previous }}</td>
+                                <td>{{ transit_dynamics_report.transport.total.annual_current }}</td>
+                                <td>{{ transit_dynamics_report.transport.total.partial_previous }}</td>
+                                <td>{{ transit_dynamics_report.transport.total.partial_current }}</td>
+                                <td class="report-dynamic {{ transit_dynamics_report.transport.total.dynamic_direction }}">{{ transit_dynamics_report.transport.total.dynamic }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="report-section">
+                <h2>2. Əsas dəhlizlər üzrə tranzit daşımalar, {{ transit_dynamics_report.unit }}</h2>
+                <div class="report-table-wrap compact">
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>Dəhliz</th>
+                                <th>{{ transit_dynamics_report.annual_years.previous }}</th>
+                                <th>{{ transit_dynamics_report.annual_years.current }}</th>
+                                <th>{{ transit_dynamics_report.partial_years.previous }}</th>
+                                <th>{{ transit_dynamics_report.partial_years.current }}</th>
+                                <th>Dinamika</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in transit_dynamics_report.corridors.rows %}
+                                <tr>
+                                    <td>{{ row.label }}</td>
+                                    <td>{{ row.annual_previous }}</td>
+                                    <td>{{ row.annual_current }}</td>
+                                    <td>{{ row.partial_previous }}</td>
+                                    <td>{{ row.partial_current }}</td>
+                                    <td class="report-dynamic {{ row.dynamic_direction }}">{{ row.dynamic }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="report-section">
+                <h2>3. Əsas məhsullar üzrə tranzit daşımalar, {{ transit_dynamics_report.unit }}</h2>
+                <div class="report-table-wrap compact">
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>Məhsul adı (qısaldılmış)</th>
+                                <th>{{ transit_dynamics_report.annual_years.previous }}</th>
+                                <th>{{ transit_dynamics_report.annual_years.current }}</th>
+                                <th>{{ transit_dynamics_report.partial_years.previous }}</th>
+                                <th>{{ transit_dynamics_report.partial_years.current }}</th>
+                                <th>Dinamika</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in transit_dynamics_report.products.rows %}
+                                <tr>
+                                    <td>{{ row.label }}</td>
+                                    <td>{{ row.annual_previous }}</td>
+                                    <td>{{ row.annual_current }}</td>
+                                    <td>{{ row.partial_previous }}</td>
+                                    <td>{{ row.partial_current }}</td>
+                                    <td class="report-dynamic {{ row.dynamic_direction }}">{{ row.dynamic }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="report-section">
+                <h2>4. Göndərən ölkələr üzrə tranzit daşımalar, {{ transit_dynamics_report.unit }}</h2>
+                <div class="report-table-wrap compact">
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>Göndərən ölkə</th>
+                                <th>{{ transit_dynamics_report.annual_years.previous }}</th>
+                                <th>{{ transit_dynamics_report.annual_years.current }}</th>
+                                <th>{{ transit_dynamics_report.partial_years.previous }}</th>
+                                <th>{{ transit_dynamics_report.partial_years.current }}</th>
+                                <th>Dinamika</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in transit_dynamics_report.sender_countries.rows %}
+                                <tr>
+                                    <td>{{ row.label }}</td>
+                                    <td>{{ row.annual_previous }}</td>
+                                    <td>{{ row.annual_current }}</td>
+                                    <td>{{ row.partial_previous }}</td>
+                                    <td>{{ row.partial_current }}</td>
+                                    <td class="report-dynamic {{ row.dynamic_direction }}">{{ row.dynamic }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="report-section">
+                <h2>5. Təyinat ölkələr üzrə tranzit daşımalar, {{ transit_dynamics_report.unit }}</h2>
+                <div class="report-table-wrap compact">
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>Təyinat ölkə</th>
+                                <th>{{ transit_dynamics_report.annual_years.previous }}</th>
+                                <th>{{ transit_dynamics_report.annual_years.current }}</th>
+                                <th>{{ transit_dynamics_report.partial_years.previous }}</th>
+                                <th>{{ transit_dynamics_report.partial_years.current }}</th>
+                                <th>Dinamika</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in transit_dynamics_report.destination_countries.rows %}
+                                <tr>
+                                    <td>{{ row.label }}</td>
+                                    <td>{{ row.annual_previous }}</td>
+                                    <td>{{ row.annual_current }}</td>
+                                    <td>{{ row.partial_previous }}</td>
+                                    <td>{{ row.partial_current }}</td>
+                                    <td class="report-dynamic {{ row.dynamic_direction }}">{{ row.dynamic }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+        </section>
+    {% endif %}
+{% endif %}
 
 {% if transit_data %}
 <section class="panel data-panel">
     <div class="section-heading">
         <div>
-            <p class="eyebrow">Transit database</p>
-            <h2>Raw Transit Data</h2>
+            <p class="eyebrow">{{ transit_data.eyebrow|default:"Transit database" }}</p>
+            <h2>{{ transit_data.heading|default:"Transit Data" }}</h2>
             <p class="muted">
                 {{ transit_data.filtered_count }} nəticədən {{ transit_data.page_start }}-{{ transit_data.page_end }} arası göstərilir.
             </p>
@@ -27,63 +228,25 @@
         <div class="filter-card-header">
             <div>
                 <strong>Filtrlər</strong>
-                <span>Tranzit məlumatlarını daraltmaq üçün filtrlərdən istifadə edin.</span>
+                <span>Məlumatları daraltmaq üçün filtrlərdən istifadə edin.</span>
             </div>
         </div>
         <div class="filter-grid">
-            <label>
-                <span>{{ transit_data.filter_labels.date_from }}</span>
-                <input type="date" name="date_from" value="{{ transit_data.filters.date_from }}">
-            </label>
-            <label>
-                <span>{{ transit_data.filter_labels.date_to }}</span>
-                <input type="date" name="date_to" value="{{ transit_data.filters.date_to }}">
-            </label>
-            <label>
-                <span>{{ transit_data.filter_labels.mal_gonderen_olke }}</span>
-                <select name="mal_gonderen_olke">
-                    <option value="">Hamısı</option>
-                    {% for value in transit_data.filter_options.mal_gonderen_olke %}
-                        <option value="{{ value }}" {% if transit_data.filters.mal_gonderen_olke == value %}selected{% endif %}>{{ value }}</option>
-                    {% endfor %}
-                </select>
-            </label>
-            <label>
-                <span>{{ transit_data.filter_labels.mal_teyinat_olke }}</span>
-                <select name="mal_teyinat_olke">
-                    <option value="">Hamısı</option>
-                    {% for value in transit_data.filter_options.mal_teyinat_olke %}
-                        <option value="{{ value }}" {% if transit_data.filters.mal_teyinat_olke == value %}selected{% endif %}>{{ value }}</option>
-                    {% endfor %}
-                </select>
-            </label>
-            <label>
-                <span>{{ transit_data.filter_labels.giris_dehliz }}</span>
-                <select name="giris_dehliz">
-                    <option value="">Hamısı</option>
-                    {% for value in transit_data.filter_options.giris_dehliz %}
-                        <option value="{{ value }}" {% if transit_data.filters.giris_dehliz == value %}selected{% endif %}>{{ value }}</option>
-                    {% endfor %}
-                </select>
-            </label>
-            <label>
-                <span>{{ transit_data.filter_labels.cixis_dehliz }}</span>
-                <select name="cixis_dehliz">
-                    <option value="">Hamısı</option>
-                    {% for value in transit_data.filter_options.cixis_dehliz %}
-                        <option value="{{ value }}" {% if transit_data.filters.cixis_dehliz == value %}selected{% endif %}>{{ value }}</option>
-                    {% endfor %}
-                </select>
-            </label>
-            <label>
-                <span>{{ transit_data.filter_labels.mal_kodu }}</span>
-                <select name="mal_kodu">
-                    <option value="">Hamısı</option>
-                    {% for value in transit_data.filter_options.mal_kodu %}
-                        <option value="{{ value }}" {% if transit_data.filters.mal_kodu == value %}selected{% endif %}>{{ value }}</option>
-                    {% endfor %}
-                </select>
-            </label>
+            {% for field in transit_data.filter_fields %}
+                <label>
+                    <span>{{ field.label }}</span>
+                    {% if field.type == "date" %}
+                        <input type="date" name="{{ field.name }}" value="{{ field.value }}">
+                    {% else %}
+                        <select name="{{ field.name }}">
+                            <option value="">Hamısı</option>
+                            {% for value in field.options %}
+                                <option value="{{ value }}" {% if field.value == value %}selected{% endif %}>{{ value }}</option>
+                            {% endfor %}
+                        </select>
+                    {% endif %}
+                </label>
+            {% endfor %}
         </div>
         <div class="filter-actions">
             <button class="primary" type="submit">Filtrlə</button>
@@ -148,7 +311,7 @@
 </section>
 {% endif %}
 
-{% if not transit_data %}
+{% if not transit_data and not transit_dynamics_report %}
 <section>
     <h2>Reports</h2>
     <div class="card-grid">

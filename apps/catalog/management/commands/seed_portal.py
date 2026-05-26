@@ -37,7 +37,7 @@ MODULES = [
             "AZAL / Azerbaijan Airlines",
         ],
     ),
-    ("Processed Data", "", []),
+    ("Processed Data", "processed-data", ["Transit"]),
 ]
 
 DASHBOARDS = ["Transit", "İdxal/İxrac/Tranzit", "ADY", "PoB"]

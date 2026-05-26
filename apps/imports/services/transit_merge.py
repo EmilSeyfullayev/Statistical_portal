@@ -5,8 +5,9 @@ from django.db import connection
 TRANSIT_SCHEMA = "transit"
 MERGED_TABLE = "transit_merged"
 PORTAL_TABLE = "transit_data_for_portal"
+DASHBOARD_TABLE = "transit_for_dashboard_on_ministry_portal"
 SORT_COLUMN = "merged_cixis_tarixi"
-EXCLUDED_SOURCE_TABLES = {MERGED_TABLE, PORTAL_TABLE}
+EXCLUDED_SOURCE_TABLES = {MERGED_TABLE, PORTAL_TABLE, DASHBOARD_TABLE}
 
 # Per-file tables skipped by UNION ALL when building transit_merged.
 # transit_2026_2026_01 is omitted because the next month's file (2026_02) is

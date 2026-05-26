@@ -11,7 +11,10 @@ from apps.filesync.services import file_checksum
 from apps.imports.models import ImportJob
 from apps.imports.registry import get_importer
 from apps.imports.services.transit_merge import rebuild_transit_merged
-from apps.imports.services.transit_portal import rebuild_transit_data_for_portal
+from apps.imports.services.transit_portal import (
+    rebuild_transit_dashboard_table,
+    rebuild_transit_data_for_portal,
+)
 
 
 class Command(BaseCommand):
@@ -90,6 +93,14 @@ class Command(BaseCommand):
                         f"Rebuilt {portal_result.portal_table} from {portal_result.source_table} "
                         f"with {portal_result.portal_row_count} rows "
                         f"({portal_result.source_row_count} source rows)."
+                    )
+                )
+                dashboard_result = rebuild_transit_dashboard_table()
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"Rebuilt {dashboard_result.dashboard_table} from {dashboard_result.source_table} "
+                        f"with {dashboard_result.dashboard_row_count} rows "
+                        f"({dashboard_result.source_row_count} source rows)."
                     )
                 )
 

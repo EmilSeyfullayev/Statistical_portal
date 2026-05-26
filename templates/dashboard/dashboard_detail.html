@@ -1,24 +1,209 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}{{ dashboard.name }} - Ministry Portal{% endblock %}
 
 {% block content %}
-<section class="hero compact">
-    <div>
-        <p class="eyebrow">Dashboard</p>
-        <h1>{{ dashboard.name }}</h1>
-        <p>{{ dashboard.description|default:"Dashboard statistics and linked module reports will appear here." }}</p>
-    </div>
-</section>
+{% if transit_dashboard %}
+    <section class="hero transit-hero">
+        <div>
+            <p class="eyebrow">Transit dashboard</p>
+            <h1>{{ dashboard.name }}</h1>
+            <p>Lightweight monthly dashboard built from pre-aggregated transit cargo data.</p>
+        </div>
+        {% if transit_dashboard.available %}
+            <div class="hero-metrics">
+                <div class="hero-metric">
+                    <span>{{ transit_dashboard.summary.period_metrics.annual.title }}</span>
+                    <strong>{{ transit_dashboard.summary.period_metrics.annual.value_label }}</strong>
+                    <small>{{ transit_dashboard.summary.period_metrics.annual.label }} · ton</small>
+                </div>
+                {% if transit_dashboard.summary.period_metrics.monthly %}
+                    <div class="hero-metric subtle">
+                        <span>{{ transit_dashboard.summary.period_metrics.monthly.title }}</span>
+                        <strong>{{ transit_dashboard.summary.period_metrics.monthly.value_label }}</strong>
+                        <small>{{ transit_dashboard.summary.period_metrics.monthly.label }} · ton</small>
+                    </div>
+                {% endif %}
+            </div>
+        {% endif %}
+    </section>
 
-<section class="panel">
-    <h2>Linked modules</h2>
-    <div class="card-grid">
-        {% for module in dashboard.modules.all %}
-            <a class="card" href="{{ module.get_absolute_url }}"><h3>{{ module.name }}</h3></a>
-        {% empty %}
-            <p>This dashboard is ready for linked modules and future charts.</p>
-        {% endfor %}
-    </div>
-</section>
+    {% if not transit_dashboard.available %}
+        <section class="panel">
+            <h2>Dashboard table is not ready</h2>
+            <p class="muted">{{ transit_dashboard.message }}</p>
+        </section>
+    {% else %}
+        <section class="dashboard-kpi-grid">
+            <article class="kpi-card accent">
+                <span>{{ transit_dashboard.summary.period_metrics.annual.title }}</span>
+                <strong>{{ transit_dashboard.summary.period_metrics.annual.value_label }}</strong>
+                <small>{{ transit_dashboard.summary.period_metrics.annual.label }} · ton</small>
+            </article>
+            {% if transit_dashboard.summary.period_metrics.monthly %}
+                <article class="kpi-card accent secondary">
+                    <span>{{ transit_dashboard.summary.period_metrics.monthly.title }}</span>
+                    <strong>{{ transit_dashboard.summary.period_metrics.monthly.value_label }}</strong>
+                    <small>{{ transit_dashboard.summary.period_metrics.monthly.label }} · ton</small>
+                </article>
+            {% endif %}
+            <article class="kpi-card">
+                <span>Top dəhliz</span>
+                <strong>{{ transit_dashboard.summary.top_corridor }}</strong>
+                <small>Seçilmiş dövr və filtrlərə görə</small>
+            </article>
+            <article class="kpi-card">
+                <span>Top məhsul qrupu</span>
+                <strong>{{ transit_dashboard.summary.top_product_group }}</strong>
+                <small>Qısaldılmış nomenklatura</small>
+            </article>
+        </section>
+
+        <section class="comparison-grid">
+            {% for card in transit_dashboard.comparison_cards %}
+                <article class="comparison-card {{ card.direction }}">
+                    <span>{{ card.title }}</span>
+                    <strong>{{ card.current_value }} ton</strong>
+                    <small>{{ card.current_label }} vs {{ card.previous_label }}: {{ card.change_label }}</small>
+                    <em>Əvvəlki dövr: {{ card.previous_value }} ton</em>
+                </article>
+            {% endfor %}
+        </section>
+
+        <section class="dashboard-chart-grid">
+            <article class="chart-panel wide">
+                <div class="chart-heading">
+                    <div>
+                        <p class="eyebrow">Trend</p>
+                        <h2>İllik yük həcmi</h2>
+                    </div>
+                </div>
+                <div class="svg-chart" data-chart-key="yearlyTrend"></div>
+            </article>
+            <article class="chart-panel">
+                <div class="chart-heading">
+                    <div>
+                        <p class="eyebrow">Nəqliyyat</p>
+                        <h2>Növ üzrə bölgü</h2>
+                        <p class="muted">{{ transit_dashboard.summary.chart_period_label }}</p>
+                    </div>
+                </div>
+                <div class="svg-chart" data-chart-key="transport"></div>
+            </article>
+            <article class="chart-panel">
+                <div class="chart-heading">
+                    <div>
+                        <p class="eyebrow">Dəhliz</p>
+                        <h2>Dəhlizlər üzrə</h2>
+                        <p class="muted">{{ transit_dashboard.summary.chart_period_label }}</p>
+                    </div>
+                </div>
+                <div class="svg-chart" data-chart-key="corridor"></div>
+            </article>
+            <article class="chart-panel">
+                <div class="chart-heading">
+                    <div>
+                        <p class="eyebrow">Məhsul</p>
+                        <h2>Məhsul qrupları</h2>
+                        <p class="muted">{{ transit_dashboard.summary.chart_period_label }}</p>
+                    </div>
+                </div>
+                <div class="svg-chart" data-chart-key="productGroup"></div>
+            </article>
+            <article class="chart-panel wide">
+                <div class="chart-heading">
+                    <div>
+                        <p class="eyebrow">Axın</p>
+                        <h2>Göndərən ölkə -> Təyinat ölkə</h2>
+                        <p class="muted">{{ transit_dashboard.summary.chart_period_label }}</p>
+                    </div>
+                </div>
+                <div class="svg-chart" data-chart-key="countryFlow"></div>
+            </article>
+            <article class="chart-panel wide">
+                <div class="chart-heading">
+                    <div>
+                        <p class="eyebrow">Postlar</p>
+                        <h2>Gömrük giriş-çıxış cütlükləri</h2>
+                        <p class="muted">{{ transit_dashboard.summary.chart_period_label }}</p>
+                    </div>
+                </div>
+                <div class="svg-chart" data-chart-key="postFlow"></div>
+            </article>
+        </section>
+
+        <form method="get" class="panel dashboard-filter-panel">
+            <div class="filter-card-header">
+                <div>
+                    <strong>Dashboard filtrləri</strong>
+                    <span>Default olaraq yalnız Avtomobil, Dəmiryolu və Hava seçilir.</span>
+                </div>
+                <div class="filter-actions">
+                    <button class="primary" type="submit">Tətbiq et</button>
+                    <a class="button" href="{{ request.path }}">Sıfırla</a>
+                </div>
+            </div>
+            <div class="dashboard-filter-grid">
+                {% for field in transit_dashboard.filter_fields %}
+                    <label {% if field.type == "multi_select" %}class="checkbox-dropdown-label"{% endif %}>
+                        <span>{{ field.label }}</span>
+                        {% if field.type == "date" %}
+                            <input type="date" name="{{ field.name }}" value="{{ field.value }}">
+                        {% elif field.type == "multi_select" %}
+                            <div class="checkbox-dropdown" data-checkbox-dropdown>
+                                <button type="button" class="checkbox-dropdown-toggle">
+                                    <span data-checkbox-dropdown-label>{{ field.value|join:", " }}</span>
+                                    <b>▾</b>
+                                </button>
+                                <div class="checkbox-dropdown-menu">
+                                    {% for value in field.options %}
+                                        <label class="checkbox-option">
+                                            <input type="checkbox" name="{{ field.name }}" value="{{ value }}" {% if value in field.value %}checked{% endif %}>
+                                            <span>{{ value }}</span>
+                                        </label>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        {% else %}
+                            <select name="{{ field.name }}">
+                                <option value="">Hamısı</option>
+                                {% for value in field.options %}
+                                    <option value="{{ value }}" {% if field.value == value %}selected{% endif %}>{{ value }}</option>
+                                {% endfor %}
+                            </select>
+                        {% endif %}
+                    </label>
+                {% endfor %}
+            </div>
+        </form>
+
+        {{ transit_dashboard.charts|json_script:"transit-dashboard-data" }}
+    {% endif %}
+{% else %}
+    <section class="hero compact">
+        <div>
+            <p class="eyebrow">Dashboard</p>
+            <h1>{{ dashboard.name }}</h1>
+            <p>{{ dashboard.description|default:"Dashboard statistics and linked module reports will appear here." }}</p>
+        </div>
+    </section>
+
+    <section class="panel linked-modules-panel">
+        <h2>Linked modules</h2>
+        <div class="card-grid">
+            {% for module in dashboard.modules.all %}
+                <a class="card" href="{{ module.get_absolute_url }}"><h3>{{ module.name }}</h3></a>
+            {% empty %}
+                <p>This dashboard is ready for linked modules and future charts.</p>
+            {% endfor %}
+        </div>
+    </section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+    {% if transit_dashboard.available %}
+        <script src="{% static 'js/transit_dashboard.js' %}?v=20260525-2"></script>
+    {% endif %}
 {% endblock %}
