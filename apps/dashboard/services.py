@@ -2,7 +2,8 @@ from datetime import date
 
 from django.db import connection
 from django.http import QueryDict
-from django.utils import timezone
+
+from apps.dashboard.transit_periods import TransitDataPeriods, load_transit_data_periods
 
 PAGE_SIZE = 100
 DOWNLOAD_LIMIT = 500
@@ -169,11 +170,6 @@ DASHBOARD_FILTER_FIELDS = [
     {"name": "cixis_go", "label": "Gömrük çıxış postu", "type": "select"},
 ]
 
-REPORT_YEAR_CURRENT = 2025
-REPORT_YEAR_PREVIOUS = 2024
-REPORT_PARTIAL_CURRENT = 2026
-REPORT_PARTIAL_PREVIOUS = 2025
-REPORT_COMPLETED_MONTH = 4
 REPORT_TOP_LIMIT = 10
 
 
@@ -858,55 +854,64 @@ def dashboard_comparison_cards(filters):
     return cards
 
 
-def dashboard_period_metrics(filters):
-    now = timezone.localdate()
-    last_completed_year = now.year - 1
-    previous_year = last_completed_year - 1
+def dashboard_period_metrics(filters, periods: TransitDataPeriods | None = None):
+    periods = periods or load_transit_data_periods()
+    if periods is None:
+        return {
+            "annual": {
+                "title": "Son tamamlanmış il",
+                "label": "-",
+                "start_date": None,
+                "end_date": None,
+                "value": 0,
+                "value_label": format_tons(0),
+                "previous_label": "-",
+                "previous_value": 0,
+            }
+        }
+
     last_completed_year_total = period_total(
         filters,
-        date(last_completed_year, 1, 1),
-        date(last_completed_year + 1, 1, 1),
+        periods.annual_current_start,
+        periods.annual_current_end,
     )
     previous_year_total = period_total(
         filters,
-        date(previous_year, 1, 1),
-        date(previous_year + 1, 1, 1),
+        periods.annual_previous_start,
+        periods.annual_previous_end,
     )
-    metrics = {
+    current_period_total = period_total(
+        filters,
+        periods.partial_current_start,
+        periods.partial_current_end,
+    )
+    previous_period_total = period_total(
+        filters,
+        periods.partial_previous_start,
+        periods.partial_previous_end,
+    )
+    return {
         "annual": {
             "title": "Son tamamlanmış il",
-            "label": str(last_completed_year),
-            "start_date": date(last_completed_year, 1, 1),
-            "end_date": date(last_completed_year + 1, 1, 1),
+            "label": periods.annual_current_label,
+            "start_date": periods.annual_current_start,
+            "end_date": periods.annual_current_end,
             "value": last_completed_year_total,
             "value_label": format_tons(last_completed_year_total),
-            "previous_label": str(previous_year),
+            "previous_label": periods.annual_previous_label,
             "previous_value": previous_year_total,
-        }
-    }
-    completed_month = now.month - 1
-    if now.month != 12 and completed_month > 0:
-        current_period_total = period_total(
-            filters,
-            date(now.year, 1, 1),
-            date(now.year, completed_month + 1, 1),
-        )
-        previous_period_total = period_total(
-            filters,
-            date(now.year - 1, 1, 1),
-            date(now.year - 1, completed_month + 1, 1),
-        )
-        metrics["monthly"] = {
+        },
+        "monthly": {
             "title": "Cari tamamlanmış dövr",
-            "label": f"{now.year} Yan-{completed_month:02d}",
-            "start_date": date(now.year, 1, 1),
-            "end_date": date(now.year, completed_month + 1, 1),
+            "label": periods.partial_period_label,
+            "start_date": periods.partial_current_start,
+            "end_date": periods.partial_current_end,
             "value": current_period_total,
             "value_label": format_tons(current_period_total),
-            "previous_label": f"{now.year - 1} Yan-{completed_month:02d}",
+            "previous_label": periods.partial_previous_period_label,
             "previous_value": previous_period_total,
-        }
-    return metrics
+        },
+    }
 
 
 def dashboard_period_chart_filters(filters, period_metrics):
@@ -930,7 +935,8 @@ def get_transit_dashboard_context(params):
     filters = dashboard_filters(params)
     options = dashboard_filter_options()
     totals = fetch_dashboard_totals(filters)
-    period_metrics = dashboard_period_metrics(filters)
+    periods = load_transit_data_periods()
+    period_metrics = dashboard_period_metrics(filters, periods)
     period_filters, chart_period_label = dashboard_period_chart_filters(filters, period_metrics)
     corridor_chart = fetch_grouped_chart(period_filters, "Dəhliz", limit=8)
     product_chart = fetch_grouped_chart(period_filters, "Məhsul qrupu (qısaldılmış)", limit=8)
@@ -1104,20 +1110,11 @@ def build_report_row(label, values):
     }
 
 
-def report_rows_for_dimension(column, *, limit=8, preferred_values=None):
-    annual_previous_start = date(REPORT_YEAR_PREVIOUS, 1, 1)
-    annual_previous_end = date(REPORT_YEAR_PREVIOUS + 1, 1, 1)
-    annual_current_start = date(REPORT_YEAR_CURRENT, 1, 1)
-    annual_current_end = date(REPORT_YEAR_CURRENT + 1, 1, 1)
-    partial_previous_start = date(REPORT_PARTIAL_PREVIOUS, 1, 1)
-    partial_previous_end = date(REPORT_PARTIAL_PREVIOUS, REPORT_COMPLETED_MONTH + 1, 1)
-    partial_current_start = date(REPORT_PARTIAL_CURRENT, 1, 1)
-    partial_current_end = date(REPORT_PARTIAL_CURRENT, REPORT_COMPLETED_MONTH + 1, 1)
-
+def report_rows_for_dimension(column, periods: TransitDataPeriods, *, limit=8, preferred_values=None):
     labels = report_top_values(
         column,
-        partial_current_start,
-        partial_current_end,
+        periods.partial_current_start,
+        periods.partial_current_end,
         limit=limit,
         preferred_values=preferred_values,
     )
@@ -1127,48 +1124,60 @@ def report_rows_for_dimension(column, *, limit=8, preferred_values=None):
             build_report_row(
                 label,
                 {
-                    "annual_previous": report_period_total(column, label, annual_previous_start, annual_previous_end),
-                    "annual_current": report_period_total(column, label, annual_current_start, annual_current_end),
-                    "partial_previous": report_period_total(column, label, partial_previous_start, partial_previous_end),
-                    "partial_current": report_period_total(column, label, partial_current_start, partial_current_end),
+                    "annual_previous": report_period_total(
+                        column,
+                        label,
+                        periods.annual_previous_start,
+                        periods.annual_previous_end,
+                    ),
+                    "annual_current": report_period_total(
+                        column,
+                        label,
+                        periods.annual_current_start,
+                        periods.annual_current_end,
+                    ),
+                    "partial_previous": report_period_total(
+                        column,
+                        label,
+                        periods.partial_previous_start,
+                        periods.partial_previous_end,
+                    ),
+                    "partial_current": report_period_total(
+                        column,
+                        label,
+                        periods.partial_current_start,
+                        periods.partial_current_end,
+                    ),
                 },
             )
         )
     return rows
 
 
-def report_summary_totals():
-    annual_previous_start = date(REPORT_YEAR_PREVIOUS, 1, 1)
-    annual_previous_end = date(REPORT_YEAR_PREVIOUS + 1, 1, 1)
-    annual_current_start = date(REPORT_YEAR_CURRENT, 1, 1)
-    annual_current_end = date(REPORT_YEAR_CURRENT + 1, 1, 1)
-    partial_previous_start = date(REPORT_PARTIAL_PREVIOUS, 1, 1)
-    partial_previous_end = date(REPORT_PARTIAL_PREVIOUS, REPORT_COMPLETED_MONTH + 1, 1)
-    partial_current_start = date(REPORT_PARTIAL_CURRENT, 1, 1)
-    partial_current_end = date(REPORT_PARTIAL_CURRENT, REPORT_COMPLETED_MONTH + 1, 1)
+def report_summary_totals(periods: TransitDataPeriods):
     values = {
-        "annual_previous": report_total(annual_previous_start, annual_previous_end),
-        "annual_current": report_total(annual_current_start, annual_current_end),
-        "partial_previous": report_total(partial_previous_start, partial_previous_end),
-        "partial_current": report_total(partial_current_start, partial_current_end),
+        "annual_previous": report_total(periods.annual_previous_start, periods.annual_previous_end),
+        "annual_current": report_total(periods.annual_current_start, periods.annual_current_end),
+        "partial_previous": report_total(periods.partial_previous_start, periods.partial_previous_end),
+        "partial_current": report_total(periods.partial_current_start, periods.partial_current_end),
     }
     return build_report_row("Total", values)
 
 
-def report_summary_totals_for_values(column, values):
-    annual_previous_start = date(REPORT_YEAR_PREVIOUS, 1, 1)
-    annual_previous_end = date(REPORT_YEAR_PREVIOUS + 1, 1, 1)
-    annual_current_start = date(REPORT_YEAR_CURRENT, 1, 1)
-    annual_current_end = date(REPORT_YEAR_CURRENT + 1, 1, 1)
-    partial_previous_start = date(REPORT_PARTIAL_PREVIOUS, 1, 1)
-    partial_previous_end = date(REPORT_PARTIAL_PREVIOUS, REPORT_COMPLETED_MONTH + 1, 1)
-    partial_current_start = date(REPORT_PARTIAL_CURRENT, 1, 1)
-    partial_current_end = date(REPORT_PARTIAL_CURRENT, REPORT_COMPLETED_MONTH + 1, 1)
+def report_summary_totals_for_values(column, values, periods: TransitDataPeriods):
     values_map = {
-        "annual_previous": report_total_for_values(column, values, annual_previous_start, annual_previous_end),
-        "annual_current": report_total_for_values(column, values, annual_current_start, annual_current_end),
-        "partial_previous": report_total_for_values(column, values, partial_previous_start, partial_previous_end),
-        "partial_current": report_total_for_values(column, values, partial_current_start, partial_current_end),
+        "annual_previous": report_total_for_values(
+            column, values, periods.annual_previous_start, periods.annual_previous_end
+        ),
+        "annual_current": report_total_for_values(
+            column, values, periods.annual_current_start, periods.annual_current_end
+        ),
+        "partial_previous": report_total_for_values(
+            column, values, periods.partial_previous_start, periods.partial_previous_end
+        ),
+        "partial_current": report_total_for_values(
+            column, values, periods.partial_current_start, periods.partial_current_end
+        ),
     }
     return build_report_row("Total", values_map)
 
@@ -1196,24 +1205,38 @@ def get_transit_dynamics_report_context():
             ),
         }
 
+    periods = load_transit_data_periods()
+    if periods is None:
+        return {
+            "available": False,
+            "message": (
+                "Hesabat üçün çıxış tarixi tapılmadı. Əvvəlcə transit məlumatlarını idxal edin "
+                "və transit_for_dashboard_on_ministry_portal cədvəlini yenidən yaradın."
+            ),
+        }
+
     transport_rows = report_rows_for_dimension(
         "Nəqliyyat növü",
+        periods,
         preferred_values=DASHBOARD_DEFAULT_TRANSPORTS,
     )
-    corridor_rows = report_rows_for_dimension("Dəhliz", limit=REPORT_TOP_LIMIT)
-    product_rows = report_rows_for_dimension("Məhsul adı (qısaldılmış)", limit=REPORT_TOP_LIMIT)
-    sender_country_rows = report_rows_for_dimension("Göndərən ölkə", limit=REPORT_TOP_LIMIT)
-    destination_country_rows = report_rows_for_dimension("Təyinat ölkə", limit=REPORT_TOP_LIMIT)
-    total_row = report_summary_totals_for_values("Nəqliyyat növü", DASHBOARD_DEFAULT_TRANSPORTS)
+    corridor_rows = report_rows_for_dimension("Dəhliz", periods, limit=REPORT_TOP_LIMIT)
+    product_rows = report_rows_for_dimension("Məhsul adı (qısaldılmış)", periods, limit=REPORT_TOP_LIMIT)
+    sender_country_rows = report_rows_for_dimension("Göndərən ölkə", periods, limit=REPORT_TOP_LIMIT)
+    destination_country_rows = report_rows_for_dimension("Təyinat ölkə", periods, limit=REPORT_TOP_LIMIT)
+    total_row = report_summary_totals_for_values("Nəqliyyat növü", DASHBOARD_DEFAULT_TRANSPORTS, periods)
 
     return {
         "available": True,
         "unit": "min tonla",
-        "annual_years": {"previous": REPORT_YEAR_PREVIOUS, "current": REPORT_YEAR_CURRENT},
+        "annual_years": {
+            "previous": periods.annual_year_previous,
+            "current": periods.annual_year_current,
+        },
         "partial_years": {
-            "previous": f"{REPORT_PARTIAL_PREVIOUS}*",
-            "current": f"{REPORT_PARTIAL_CURRENT}*",
-            "label": f"{REPORT_PARTIAL_CURRENT}-cı ilin ilk {REPORT_COMPLETED_MONTH} ayında",
+            "previous": periods.partial_previous_header,
+            "current": periods.partial_current_header,
+            "label": periods.partial_label,
         },
         "transport": {
             "rows": transport_rows,
