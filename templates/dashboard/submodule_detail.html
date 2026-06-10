@@ -3,8 +3,8 @@
 {% block title %}{{ submodule.name }} - Ministry Portal{% endblock %}
 
 {% block content %}
-<section class="hero compact">
-    <div>
+<section class="hero compact hero-with-actions">
+    <div class="hero-copy">
         <p class="eyebrow">{{ submodule.module.name }}</p>
         <h1>{{ submodule.name }}</h1>
         {% if transit_dynamics_report %}
@@ -13,6 +13,12 @@
             <p>View and download available reports for this submodule.</p>
         {% endif %}
     </div>
+    {% if transit_dynamics_report and transit_dynamics_report.available %}
+        <div class="hero-downloads">
+            <a class="button word-button" href="{{ request.path }}?download=docx">Word Hesabatı yüklə</a>
+            <a class="button pdf-button" href="{{ request.path }}?download=pdf">PDF Hesabatı yüklə</a>
+        </div>
+    {% endif %}
 </section>
 
 {% if transit_dynamics_report %}
@@ -24,6 +30,8 @@
     {% else %}
         <section class="panel report-panel">
             <article class="report-section">
+                <p class="report-number">Hesabat nömrəsi: {{ transit_dynamics_report.report_number }}</p>
+                <h2 class="report-title">Azərbaycan Üzərindən Tranzit Rejimdə Daşınmış Yüklərin Dinamika Hesabatı</h2>
                 <h2>1. Nəqliyyat növü üzrə tranzit daşımalar, {{ transit_dynamics_report.unit }}</h2>
                 <div class="report-narrative">
                     <p>
@@ -33,7 +41,7 @@
                     <ul>
                         {% for item in transit_dynamics_report.transport.bullets_annual %}
                             <li>
-                                <strong>{{ item.label }} ilə:</strong>
+                                <strong>{{ item.narrative_label }}:</strong>
                                 {{ item.value }} min ton
                                 <span class="report-dynamic {{ item.direction }}">({{ item.change }})</span>
                             </li>
@@ -46,7 +54,7 @@
                     <ul>
                         {% for item in transit_dynamics_report.transport.bullets_partial %}
                             <li>
-                                <strong>{{ item.label }} ilə:</strong>
+                                <strong>{{ item.narrative_label }}:</strong>
                                 {{ item.value }} min ton
                                 <span class="report-dynamic {{ item.direction }}">({{ item.change }})</span>
                             </li>

@@ -18,8 +18,12 @@ def record_interaction(
     dashboard=None,
     report=None,
     target_url="",
+    metadata=None,
 ):
     user = request.user if getattr(request.user, "is_authenticated", False) else None
+    event_metadata = request_metadata(request)
+    if metadata:
+        event_metadata.update(metadata)
     return InteractionEvent.objects.create(
         user=user,
         event_type=event_type,
@@ -28,5 +32,5 @@ def record_interaction(
         dashboard=dashboard,
         report=report,
         target_url=target_url or request.path,
-        request_metadata=request_metadata(request),
+        request_metadata=event_metadata,
     )

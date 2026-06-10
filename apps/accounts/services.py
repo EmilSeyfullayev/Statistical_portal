@@ -3,6 +3,13 @@ MODULE_RESPONSIBLE_GROUP = "Module Responsible"
 WORKER_GROUP = "Ministry Worker"
 
 
+def get_user_display_name(user):
+    if not user.is_authenticated:
+        return ""
+    full_name = user.get_full_name().strip()
+    return full_name or user.get_username()
+
+
 def is_admin(user):
     return user.is_authenticated and (user.is_superuser or user.groups.filter(name=ADMIN_GROUP).exists())
 

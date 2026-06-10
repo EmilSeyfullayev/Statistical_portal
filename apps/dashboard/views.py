@@ -1,13 +1,15 @@
 from openpyxl import Workbook
 
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse
+from django.http import FileResponse, HttpResponse
 from django.shortcuts import get_object_or_404, render
 
 from apps.analytics.models import InteractionEvent
 from apps.analytics.services import record_interaction
 from apps.catalog.models import DashboardDefinition, Module, Submodule
 from apps.dashboard.services import (
+    build_transit_dynamics_report_docx,
+    build_transit_dynamics_report_pdf,
     get_transit_download_rows,
     get_transit_dashboard_context,
     get_transit_dynamics_report_context,
@@ -15,6 +17,36 @@ from apps.dashboard.services import (
     get_transit_portal_context,
     get_transit_portal_download_rows,
 )
+from apps.reports.models import ReportDownload
+
+
+TRANSIT_DYNAMICS_REPORT_NAME = "Azərbaycan Üzərindən Tranzit Rejimdə Daşınmış Yüklərin Dinamika Hesabatı"
+
+
+def record_transit_dynamics_download(request, submodule, report_context, report_format, filename):
+    metadata = {
+        "report_name": TRANSIT_DYNAMICS_REPORT_NAME,
+        "report_number": report_context["report_number"],
+        "format": report_format,
+        "filename": filename,
+    }
+    record_interaction(
+        request,
+        InteractionEvent.REPORT_LINK_CLICK,
+        module=submodule.module,
+        submodule=submodule,
+        target_url=request.get_full_path(),
+        metadata=metadata,
+    )
+    ReportDownload.objects.create(
+        user=request.user if request.user.is_authenticated else None,
+        report=None,
+        module=submodule.module,
+        submodule=submodule,
+        format=report_format,
+        generated_file_path=filename,
+        request_metadata=metadata,
+    )
 
 
 @login_required
@@ -90,7 +122,30 @@ def submodule_detail(request, module_slug, submodule_slug):
             return response
         context["transit_data"] = transit_table["context_loader"](request.GET)
     elif submodule.module.slug == "tranzit-daşımalar" and submodule.slug == "dinamika-arayışı":
-        context["transit_dynamics_report"] = get_transit_dynamics_report_context()
+        transit_dynamics_report = get_transit_dynamics_report_context()
+        if transit_dynamics_report.get("available"):
+            filename_base = transit_dynamics_report["report_number"].replace("/", "-")
+            if request.GET.get("download") == "docx":
+                output = build_transit_dynamics_report_docx(transit_dynamics_report)
+                filename = f"{filename_base}.docx"
+                record_transit_dynamics_download(request, submodule, transit_dynamics_report, "docx", filename)
+                return FileResponse(
+                    output,
+                    as_attachment=True,
+                    filename=filename,
+                    content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            if request.GET.get("download") == "pdf":
+                output = build_transit_dynamics_report_pdf(transit_dynamics_report)
+                filename = f"{filename_base}.pdf"
+                record_transit_dynamics_download(request, submodule, transit_dynamics_report, "pdf", filename)
+                return FileResponse(
+                    output,
+                    as_attachment=True,
+                    filename=filename,
+                    content_type="application/pdf",
+                )
+        context["transit_dynamics_report"] = transit_dynamics_report
     return render(request, "dashboard/submodule_detail.html", context)
 
 # Create your views here.

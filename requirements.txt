@@ -4,4 +4,5 @@ pandas
 openpyxl
 psycopg[binary]
 python-docx
+dxpdf
 reportlab

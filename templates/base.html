@@ -1,26 +1,31 @@
-{% load static %}
+{% load account_tags static %}
 <!doctype html>
 <html lang="az">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Ministry Portal{% endblock %}</title>
-    <link rel="stylesheet" href="{% static 'css/styles.css' %}?v=20260520-1644">
+    <title>{% block title %}Nəqliyyat portalı{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}?v=20260610-11">
 </head>
 <body>
     <header class="topbar">
-        <a class="brand" href="{% url 'dashboard:home' %}">Ministry Portal</a>
-        <nav>
-            {% if user.is_authenticated %}
-                <a href="{% url 'dashboard:home' %}">Dashboard</a>
-                <a href="{% url 'analytics:statistics' %}">Statistics</a>
-                <a href="{% url 'admin:index' %}">Admin</a>
-                <form action="{% url 'logout' %}" method="post" class="inline-form">
-                    {% csrf_token %}
-                    <button type="submit">Logout</button>
-                </form>
+        <a class="brand" href="{% url 'dashboard:home' %}">Nəqliyyat portalı</a>
+        {% if user.is_authenticated %}
+        <nav class="topbar-actions">
+            <a href="{% url 'dashboard:home' %}">Əsas səhifə</a>
+            {% if user|user_is_admin %}
+                <a href="{% url 'analytics:statistics' %}">Statistika</a>
+                <a href="{% url 'admin:index' %}">İdarəetmə</a>
             {% endif %}
+            <div class="topbar-user">
+                <span class="topbar-user-name">{{ user|user_display_name }}</span>
+            </div>
+            <form action="{% url 'logout' %}" method="post" class="inline-form">
+                {% csrf_token %}
+                <button type="submit">Çıxış</button>
+            </form>
         </nav>
+        {% endif %}
     </header>
     <main class="page">
         {% if messages %}

@@ -116,3 +116,7 @@ def load_transit_data_periods() -> TransitDataPeriods | None:
         return None
 
     return compute_transit_data_periods(max_date.year, max_date.month)
+
+
+def format_dynamics_report_number(periods: TransitDataPeriods) -> str:
+    return f"TR-001-{periods.reference_year}/{periods.reference_month:02d}-Dinamika"

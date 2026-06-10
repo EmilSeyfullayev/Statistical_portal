@@ -1,39 +1,39 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - Ministry Portal{% endblock %}
+{% block title %}Əsas səhifə - Nəqliyyat portalı{% endblock %}
 
 {% block content %}
 <section class="hero">
     <div>
-        <p class="eyebrow">Internal network</p>
-        <h1>Ministry reporting dashboard</h1>
-        <p>Synchronize Excel data, import records, open dashboards, and download Microsoft Word reports.</p>
+        <p class="eyebrow">Daxili şəbəkə</p>
+        <h1>Nəqliyyat portalı</h1>
+        <p>Nəqliyyat sahələri üzrə infoqrafiklara baxmaq, arayışları yükləmək və real dataları görmək imkanı yaradan bir platformadır.</p>
     </div>
 </section>
 
-<section>
-    <h2>Main dashboards</h2>
-    <div class="card-grid">
+<section class="infographic-section">
+    <h2>Əsas infoqrafiklər</h2>
+    <div class="infographic-grid">
         {% for dashboard in dashboards %}
-            <a class="card" href="{% url 'dashboard:dashboard_detail' dashboard.slug %}">
-                <span class="card-kicker">Dashboard</span>
+            <a class="infographic-card" href="{% url 'dashboard:dashboard_detail' dashboard.slug %}">
+                <span class="card-kicker">İnfoqrafik</span>
                 <h3>{{ dashboard.name }}</h3>
-                <p>{{ dashboard.description|default:"High-level analytical view and linked reports." }}</p>
+                <p>{{ dashboard.description|default:"Ümumi analitik baxış və əlaqəli hesabatlar." }}</p>
             </a>
         {% empty %}
-            <p>No dashboards configured yet. Run <code>python manage.py seed_portal</code>.</p>
+            <p>Hələ infoqrafik konfiqurasiya edilməyib. <code>python manage.py seed_portal</code> əmrini işlədin.</p>
         {% endfor %}
     </div>
 </section>
 
 <section>
-    <h2>Modules</h2>
+    <h2>Modullar</h2>
     <div class="card-grid">
         {% for module in modules %}
             <a class="card" href="{{ module.get_absolute_url }}">
-                <span class="card-kicker">Module</span>
+                <span class="card-kicker">Modul</span>
                 <h3>{{ module.name }}</h3>
-                <p>{{ module.submodules.count }} submodules</p>
+                <p>{{ module.submodules.count }} alt modul</p>
             </a>
         {% endfor %}
     </div>

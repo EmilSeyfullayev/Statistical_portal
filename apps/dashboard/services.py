@@ -1,9 +1,20 @@
 from datetime import date
+from io import BytesIO
 
 from django.db import connection
 from django.http import QueryDict
+from docx import Document
+from docx.enum.table import WD_ALIGN_VERTICAL
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import parse_xml
+from docx.oxml.ns import nsdecls
+from docx.shared import Inches, Pt, RGBColor
 
-from apps.dashboard.transit_periods import TransitDataPeriods, load_transit_data_periods
+from apps.dashboard.transit_periods import (
+    TransitDataPeriods,
+    format_dynamics_report_number,
+    load_transit_data_periods,
+)
 
 PAGE_SIZE = 100
 DOWNLOAD_LIMIT = 500
@@ -1087,7 +1098,7 @@ def format_report_percent(value):
     if value is None:
         return "-"
     sign = "+" if value >= 0 else ""
-    return f"{sign}{value:.0f}%"
+    return f"{sign}{value:.1f}%"
 
 
 def build_report_row(label, values):
@@ -1182,13 +1193,23 @@ def report_summary_totals_for_values(column, values, periods: TransitDataPeriods
     return build_report_row("Total", values_map)
 
 
+def transport_narrative_label(label):
+    narrative_labels = {
+        "Avtomobil": "Avtomobil yolu ilə",
+        "Hava": "Hava yolu ilə",
+    }
+    return narrative_labels.get(label, f"{label} ilə")
+
+
 def report_sentence(row, period="partial"):
     value_key = "partial_current" if period == "partial" else "annual_current"
     change_key = "partial_change" if period == "partial" else "annual_change"
     change = row[change_key]
     sign = "+" if (change or 0) >= 0 else ""
+    label = row["label"]
     return {
-        "label": row["label"],
+        "label": label,
+        "narrative_label": transport_narrative_label(label),
         "value": row[value_key],
         "change": "-" if change is None else f"{sign}{change:.1f}%",
         "direction": "up" if (change or 0) >= 0 else "down",
@@ -1228,6 +1249,7 @@ def get_transit_dynamics_report_context():
 
     return {
         "available": True,
+        "report_number": format_dynamics_report_number(periods),
         "unit": "min tonla",
         "annual_years": {
             "previous": periods.annual_year_previous,
@@ -1251,3 +1273,269 @@ def get_transit_dynamics_report_context():
         "sender_countries": {"rows": sender_country_rows},
         "destination_countries": {"rows": destination_country_rows},
     }
+
+
+DOCX_HEADER_FILL = "073763"
+DOCX_POSITIVE_PERCENT_COLOR = "00B050"
+DOCX_NEGATIVE_PERCENT_COLOR = "FF0000"
+
+
+def _set_docx_run_style(run, *, bold=False, size=12, color="073763"):
+    run.bold = bold
+    run.font.name = "Arial"
+    run.font.size = Pt(size)
+    run.font.color.rgb = RGBColor.from_string(color)
+
+
+def _dynamic_percent_color(direction):
+    return DOCX_NEGATIVE_PERCENT_COLOR if direction == "down" else DOCX_POSITIVE_PERCENT_COLOR
+
+
+def _append_docx_parenthesized_change(paragraph, change, direction, *, bold=False, size=12):
+    if change == "-":
+        run = paragraph.add_run(f" ({change})")
+        _set_docx_run_style(run, bold=bold, size=size)
+        return
+    open_run = paragraph.add_run(" (")
+    _set_docx_run_style(open_run, bold=bold, size=size)
+    change_run = paragraph.add_run(change)
+    _set_docx_run_style(change_run, bold=True, size=size, color=_dynamic_percent_color(direction))
+    close_run = paragraph.add_run(")")
+    _set_docx_run_style(close_run, bold=bold, size=size)
+
+
+def _add_docx_paragraph_with_change(
+    document,
+    before_change,
+    change,
+    direction,
+    after_change="",
+    *,
+    bold=False,
+    size=12,
+    space_after=6,
+    list_style=None,
+):
+    paragraph = document.add_paragraph()
+    paragraph.paragraph_format.space_after = Pt(space_after)
+    if list_style is not None:
+        paragraph.style = list_style
+    run = paragraph.add_run(before_change)
+    _set_docx_run_style(run, bold=bold, size=size)
+    _append_docx_parenthesized_change(paragraph, change, direction, bold=bold, size=size)
+    if after_change:
+        after_run = paragraph.add_run(after_change)
+        _set_docx_run_style(after_run, bold=bold, size=size)
+    return paragraph
+
+
+def _add_docx_paragraph(document, text, *, bold=False, size=12, alignment=None, space_after=6):
+    paragraph = document.add_paragraph()
+    if alignment is not None:
+        paragraph.alignment = alignment
+    paragraph.paragraph_format.space_after = Pt(space_after)
+    run = paragraph.add_run(text)
+    _set_docx_run_style(run, bold=bold, size=size)
+    return paragraph
+
+
+def _shade_docx_cell(cell, fill):
+    cell._tc.get_or_add_tcPr().append(parse_xml(f'<w:shd {nsdecls("w")} w:fill="{fill}"/>'))
+
+
+def _style_docx_cell(cell, *, bold=False, color="073763", fill=None, align_center=False):
+    if fill:
+        _shade_docx_cell(cell, fill)
+    if align_center:
+        cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+    for paragraph in cell.paragraphs:
+        if align_center:
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for run in paragraph.runs:
+            _set_docx_run_style(run, bold=bold, size=12, color=color)
+
+
+def _style_docx_table_value_cell(cell, value, *, row_data=None, cell_index=0, bold=False, fill=None):
+    cell.text = str(value)
+    is_dynamic_column = cell_index == 5
+    if is_dynamic_column and value != "-" and row_data is not None:
+        _style_docx_cell(
+            cell,
+            bold=True,
+            color=_dynamic_percent_color(row_data["dynamic_direction"]),
+            fill=fill,
+            align_center=True,
+        )
+        return
+    _style_docx_cell(
+        cell,
+        bold=bold,
+        fill=fill,
+        align_center=cell_index > 0,
+    )
+
+
+def _add_report_docx_table(document, headers, rows, total_row=None):
+    table_rows = len(rows) + 1 + (1 if total_row else 0)
+    table = document.add_table(rows=table_rows, cols=len(headers))
+    table.style = "Table Grid"
+
+    for index, header in enumerate(headers):
+        cell = table.rows[0].cells[index]
+        cell.text = str(header)
+        _style_docx_cell(
+            cell,
+            bold=True,
+            color="FFFFFF",
+            fill=DOCX_HEADER_FILL,
+            align_center=True,
+        )
+
+    for row_index, row in enumerate(rows, start=1):
+        values = [
+            row["label"],
+            row["annual_previous"],
+            row["annual_current"],
+            row["partial_previous"],
+            row["partial_current"],
+            row["dynamic"],
+        ]
+        for cell_index, value in enumerate(values):
+            cell = table.rows[row_index].cells[cell_index]
+            _style_docx_table_value_cell(cell, value, row_data=row, cell_index=cell_index)
+
+    if total_row:
+        values = [
+            total_row["label"],
+            total_row["annual_previous"],
+            total_row["annual_current"],
+            total_row["partial_previous"],
+            total_row["partial_current"],
+            total_row["dynamic"],
+        ]
+        for cell_index, value in enumerate(values):
+            cell = table.rows[-1].cells[cell_index]
+            _style_docx_table_value_cell(
+                cell,
+                value,
+                row_data=total_row,
+                cell_index=cell_index,
+                bold=True,
+                fill="EAF2FB",
+            )
+
+    document.add_paragraph()
+
+
+def build_transit_dynamics_report_docx(report_context):
+    document = Document()
+    section = document.sections[0]
+    section.top_margin = Inches(0.6)
+    section.bottom_margin = Inches(0.6)
+    section.left_margin = Inches(0.65)
+    section.right_margin = Inches(0.65)
+
+    _add_docx_paragraph(
+        document,
+        f"Hesabat nömrəsi: {report_context['report_number']}",
+        bold=True,
+        size=10,
+        space_after=18,
+    )
+    _add_docx_paragraph(
+        document,
+        "Azərbaycan Üzərindən Tranzit Rejimdə Daşınmış Yüklərin Dinamika Hesabatı",
+        bold=True,
+        size=16,
+        alignment=WD_ALIGN_PARAGRAPH.CENTER,
+        space_after=28,
+    )
+
+    annual_year = report_context["annual_years"]["current"]
+    partial_label = report_context["partial_years"]["label"]
+    transport = report_context["transport"]
+    _add_docx_paragraph(
+        document,
+        f"1. Nəqliyyat növü üzrə tranzit daşımalar, {report_context['unit']}",
+        bold=True,
+        size=14,
+        space_after=10,
+    )
+    _add_docx_paragraph_with_change(
+        document,
+        f"{annual_year}-ci ildə tranzit daşımaların həcmi {transport['annual_sentence']['value']} ",
+        transport["annual_sentence"]["change"],
+        transport["annual_sentence"]["direction"],
+        " min ton təşkil etmişdir.",
+        bold=True,
+    )
+    for item in transport["bullets_annual"]:
+        _add_docx_paragraph_with_change(
+            document,
+            f"{item.get('narrative_label', transport_narrative_label(item['label']))}: {item['value']} min ton ",
+            item["change"],
+            item["direction"],
+            space_after=2,
+            list_style=document.styles["List Bullet"],
+        )
+    _add_docx_paragraph_with_change(
+        document,
+        f"{partial_label} tranzit daşımaların həcmi {transport['partial_sentence']['value']} ",
+        transport["partial_sentence"]["change"],
+        transport["partial_sentence"]["direction"],
+        " min ton təşkil etmişdir:",
+        bold=True,
+    )
+    for item in transport["bullets_partial"]:
+        _add_docx_paragraph_with_change(
+            document,
+            f"{item.get('narrative_label', transport_narrative_label(item['label']))}: {item['value']} min ton ",
+            item["change"],
+            item["direction"],
+            space_after=2,
+            list_style=document.styles["List Bullet"],
+        )
+
+    period_headers = [
+        report_context["annual_years"]["previous"],
+        report_context["annual_years"]["current"],
+        report_context["partial_years"]["previous"],
+        report_context["partial_years"]["current"],
+    ]
+    _add_report_docx_table(
+        document,
+        ["Nəqliyyat növü", *period_headers, "Dinamika"],
+        transport["rows"],
+        total_row=transport["total"],
+    )
+
+    report_sections = [
+        ("2. Əsas dəhlizlər üzrə tranzit daşımalar", "Dəhliz", report_context["corridors"]["rows"]),
+        ("3. Əsas məhsullar üzrə tranzit daşımalar", "Məhsul adı (qısaldılmış)", report_context["products"]["rows"]),
+        ("4. Göndərən ölkələr üzrə tranzit daşımalar", "Göndərən ölkə", report_context["sender_countries"]["rows"]),
+        ("5. Təyinat ölkələr üzrə tranzit daşımalar", "Təyinat ölkə", report_context["destination_countries"]["rows"]),
+    ]
+    for heading, first_column, rows in report_sections:
+        _add_docx_paragraph(
+            document,
+            f"{heading}, {report_context['unit']}",
+            bold=True,
+            size=14,
+            space_after=10,
+        )
+        _add_report_docx_table(document, [first_column, *period_headers, "Dinamika"], rows)
+
+    output = BytesIO()
+    document.save(output)
+    output.seek(0)
+    return output
+
+
+def build_transit_dynamics_report_pdf(report_context):
+    import dxpdf
+
+    docx_output = build_transit_dynamics_report_docx(report_context)
+    pdf_bytes = dxpdf.convert(docx_output.getvalue())
+    output = BytesIO(pdf_bytes)
+    output.seek(0)
+    return output
