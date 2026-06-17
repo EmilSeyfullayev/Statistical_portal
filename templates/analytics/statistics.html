@@ -43,7 +43,7 @@
     <div class="panel">
         <h2>Top report downloads</h2>
         {% for item in top_download_events %}
-            <p>{{ item.report_name }} ({{ item.format|upper }}): {{ item.total }}</p>
+            <p>{{ item.report_name }} / {{ item.language }} ({{ item.format|upper }}): {{ item.total }}</p>
         {% empty %}
             <p>No report downloads yet.</p>
         {% endfor %}
@@ -53,7 +53,7 @@
 <section class="panel">
     <h2>Recent interactions</h2>
     <table>
-        <thead><tr><th>Time</th><th>User</th><th>Event</th><th>Module</th><th>Submodule</th><th>Report</th><th>Format</th></tr></thead>
+        <thead><tr><th>Time</th><th>User</th><th>Event</th><th>Module</th><th>Submodule</th><th>Report</th><th>Language</th><th>Format</th><th>Number</th><th>Month</th><th>Country</th></tr></thead>
         <tbody>
             {% for event in recent_events %}
                 <tr>
@@ -63,10 +63,14 @@
                     <td>{{ event.module|default:"-" }}</td>
                     <td>{{ event.submodule|default:"-" }}</td>
                     <td>{{ event.display_report_name }}</td>
+                    <td>{{ event.display_language }}</td>
                     <td>{{ event.display_format }}</td>
+                    <td>{{ event.display_report_number }}</td>
+                    <td>{{ event.display_month }}</td>
+                    <td>{{ event.display_country }}</td>
                 </tr>
             {% empty %}
-                <tr><td colspan="7">No interactions yet.</td></tr>
+                <tr><td colspan="11">No interactions yet.</td></tr>
             {% endfor %}
         </tbody>
     </table>
@@ -75,18 +79,22 @@
 <section class="panel">
     <h2>Recent downloads</h2>
     <table>
-        <thead><tr><th>Time</th><th>User</th><th>Report</th><th>Format</th><th>File</th></tr></thead>
+        <thead><tr><th>Time</th><th>User</th><th>Report</th><th>Language</th><th>Format</th><th>Number</th><th>Month</th><th>Country</th><th>File</th></tr></thead>
         <tbody>
             {% for download in recent_downloads %}
                 <tr>
                     <td>{{ download.downloaded_at }}</td>
                     <td>{{ download.display_user_name }}</td>
                     <td>{{ download.display_report_name }}</td>
+                    <td>{{ download.display_language }}</td>
                     <td>{{ download.format }}</td>
+                    <td>{{ download.display_report_number }}</td>
+                    <td>{{ download.display_month }}</td>
+                    <td>{{ download.display_country }}</td>
                     <td>{{ download.generated_file_path|default:"-" }}</td>
                 </tr>
             {% empty %}
-                <tr><td colspan="5">No downloads yet.</td></tr>
+                <tr><td colspan="9">No downloads yet.</td></tr>
             {% endfor %}
         </tbody>
     </table>

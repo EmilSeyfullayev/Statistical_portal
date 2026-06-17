@@ -7,217 +7,65 @@
     <div class="hero-copy">
         <p class="eyebrow">{{ submodule.module.name }}</p>
         <h1>{{ submodule.name }}</h1>
-        {% if transit_dynamics_report %}
+        {% if transit_dynamics_language_options %}
+            <p>Tranzit daşımaların əsas dinamika göstəriciləri.</p>
+            {% if transit_dynamics_month_options %}
+                <form class="report-filter" method="get">
+                    <label for="transit-report-month">Son ay</label>
+                    <select id="transit-report-month" name="month" onchange="this.form.submit()">
+                        {% for month in transit_dynamics_month_options %}
+                            <option value="{{ month.value }}" {% if month.selected %}selected{% endif %}>{{ month.label }}</option>
+                        {% endfor %}
+                    </select>
+                    {% if transit_country_selected %}
+                        <input type="hidden" name="country" value="{{ transit_country_selected }}">
+                    {% endif %}
+                </form>
+            {% endif %}
+            <div class="language-switcher" aria-label="Report language" role="tablist" data-module-slug="{{ submodule.module.slug }}" data-submodule-slug="{{ submodule.slug }}" data-report-name="{{ transit_dynamics_report.text.title|default:submodule.name }}" data-report-number="{{ transit_dynamics_report.report_number|default:'' }}" data-selected-month="{{ transit_dynamics_selected_month|default:'' }}" data-selected-country="{{ transit_country_selected|default:'' }}" data-track-url="{% url 'analytics:track_report_language' %}">
+                {% for option in transit_dynamics_language_options %}
+                    <button class="button language-button{% if option.code == "az" %} active{% endif %}" type="button" role="tab" aria-selected="{% if option.code == "az" %}true{% else %}false{% endif %}" data-language-tab="{{ option.code }}">{{ option.label }}</button>
+                {% endfor %}
+            </div>
+            {% if transit_country_options %}
+                <form class="report-filter country-filter-form" method="get" data-country-form>
+                    <input type="hidden" name="month" value="{{ transit_dynamics_selected_month }}">
+                    <div class="country-combobox" data-country-combobox>
+                        <label for="transit-report-country">Seçilmiş ölkə</label>
+                        <input id="transit-report-country" class="country-combobox-input" type="search" value="{{ transit_country_selected }}" autocomplete="off" aria-autocomplete="list" aria-expanded="false" aria-controls="transit-country-options" data-country-input>
+                        <input type="hidden" name="country" value="{{ transit_country_selected }}" data-country-value>
+                        <div id="transit-country-options" class="country-combobox-options" role="listbox" data-country-options hidden>
+                            {% for country in transit_country_options %}
+                                <button class="country-combobox-option{% if country.selected %} active{% endif %}" type="button" role="option" aria-selected="{% if country.selected %}true{% else %}false{% endif %}" data-country-option="{{ country.value }}">{{ country.value }}</button>
+                            {% endfor %}
+                            <div class="country-combobox-empty" data-country-empty hidden>Nəticə tapılmadı</div>
+                        </div>
+                    </div>
+                    <button class="button primary country-submit-button" type="submit">Davam et</button>
+                </form>
+            {% endif %}
+        {% elif transit_dynamics_report %}
             <p>Tranzit daşımaların əsas dinamika göstəriciləri.</p>
         {% else %}
             <p>View and download available reports for this submodule.</p>
         {% endif %}
     </div>
     {% if transit_dynamics_report and transit_dynamics_report.available %}
-        <div class="hero-downloads">
-            <a class="button word-button" href="{{ request.path }}?download=docx">Word Hesabatı yüklə</a>
-            <a class="button pdf-button" href="{{ request.path }}?download=pdf">PDF Hesabatı yüklə</a>
+        <div class="hero-downloads transit-download-grid">
+            <a class="button word-button" href="{{ request.path }}?download=docx&lang=az&month={{ transit_dynamics_selected_month }}{% if transit_country_selected %}&country={{ transit_country_selected|urlencode }}{% endif %}">Word hesabatı yüklə</a>
+            <a class="button word-button" href="{{ request.path }}?download=docx&lang=en&month={{ transit_dynamics_selected_month }}{% if transit_country_selected %}&country={{ transit_country_selected|urlencode }}{% endif %}">Download Word report</a>
+            <a class="button word-button" href="{{ request.path }}?download=docx&lang=ru&month={{ transit_dynamics_selected_month }}{% if transit_country_selected %}&country={{ transit_country_selected|urlencode }}{% endif %}">Скачать Word отчет</a>
+            <a class="button pdf-button" href="{{ request.path }}?download=pdf&lang=az&month={{ transit_dynamics_selected_month }}{% if transit_country_selected %}&country={{ transit_country_selected|urlencode }}{% endif %}">PDF hesabatı yüklə</a>
+            <a class="button pdf-button" href="{{ request.path }}?download=pdf&lang=en&month={{ transit_dynamics_selected_month }}{% if transit_country_selected %}&country={{ transit_country_selected|urlencode }}{% endif %}">Download PDF report</a>
+            <a class="button pdf-button" href="{{ request.path }}?download=pdf&lang=ru&month={{ transit_dynamics_selected_month }}{% if transit_country_selected %}&country={{ transit_country_selected|urlencode }}{% endif %}">Скачать PDF отчет</a>
         </div>
     {% endif %}
 </section>
 
-{% if transit_dynamics_report %}
-    {% if not transit_dynamics_report.available %}
-        <section class="panel">
-            <h2>Hesabat hazır deyil</h2>
-            <p class="muted">{{ transit_dynamics_report.message }}</p>
-        </section>
-    {% else %}
-        <section class="panel report-panel">
-            <article class="report-section">
-                <p class="report-number">Hesabat nömrəsi: {{ transit_dynamics_report.report_number }}</p>
-                <h2 class="report-title">Azərbaycan Üzərindən Tranzit Rejimdə Daşınmış Yüklərin Dinamika Hesabatı</h2>
-                <h2>1. Nəqliyyat növü üzrə tranzit daşımalar, {{ transit_dynamics_report.unit }}</h2>
-                <div class="report-narrative">
-                    <p>
-                        <strong>{{ transit_dynamics_report.annual_years.current }}-ci ildə tranzit daşımaların həcmi
-                        {{ transit_dynamics_report.transport.annual_sentence.value }} ({{ transit_dynamics_report.transport.annual_sentence.change }}) min ton təşkil etmişdir.</strong>
-                    </p>
-                    <ul>
-                        {% for item in transit_dynamics_report.transport.bullets_annual %}
-                            <li>
-                                <strong>{{ item.narrative_label }}:</strong>
-                                {{ item.value }} min ton
-                                <span class="report-dynamic {{ item.direction }}">({{ item.change }})</span>
-                            </li>
-                        {% endfor %}
-                    </ul>
-                    <p>
-                        <strong>{{ transit_dynamics_report.partial_years.label }} tranzit daşımaların həcmi
-                        {{ transit_dynamics_report.transport.partial_sentence.value }} ({{ transit_dynamics_report.transport.partial_sentence.change }}) min ton təşkil etmişdir:</strong>
-                    </p>
-                    <ul>
-                        {% for item in transit_dynamics_report.transport.bullets_partial %}
-                            <li>
-                                <strong>{{ item.narrative_label }}:</strong>
-                                {{ item.value }} min ton
-                                <span class="report-dynamic {{ item.direction }}">({{ item.change }})</span>
-                            </li>
-                        {% endfor %}
-                    </ul>
-                </div>
-                <div class="report-table-wrap">
-                    <table class="report-table">
-                        <thead>
-                            <tr>
-                                <th>Nəqliyyat növü</th>
-                                <th>{{ transit_dynamics_report.annual_years.previous }}</th>
-                                <th>{{ transit_dynamics_report.annual_years.current }}</th>
-                                <th>{{ transit_dynamics_report.partial_years.previous }}</th>
-                                <th>{{ transit_dynamics_report.partial_years.current }}</th>
-                                <th>Dinamika</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for row in transit_dynamics_report.transport.rows %}
-                                <tr>
-                                    <td>{{ row.label }}</td>
-                                    <td>{{ row.annual_previous }}</td>
-                                    <td>{{ row.annual_current }}</td>
-                                    <td>{{ row.partial_previous }}</td>
-                                    <td>{{ row.partial_current }}</td>
-                                    <td class="report-dynamic {{ row.dynamic_direction }}">{{ row.dynamic }}</td>
-                                </tr>
-                            {% endfor %}
-                            <tr class="report-total-row">
-                                <td>{{ transit_dynamics_report.transport.total.label }}</td>
-                                <td>{{ transit_dynamics_report.transport.total.annual_previous }}</td>
-                                <td>{{ transit_dynamics_report.transport.total.annual_current }}</td>
-                                <td>{{ transit_dynamics_report.transport.total.partial_previous }}</td>
-                                <td>{{ transit_dynamics_report.transport.total.partial_current }}</td>
-                                <td class="report-dynamic {{ transit_dynamics_report.transport.total.dynamic_direction }}">{{ transit_dynamics_report.transport.total.dynamic }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </article>
-
-            <article class="report-section">
-                <h2>2. Əsas dəhlizlər üzrə tranzit daşımalar, {{ transit_dynamics_report.unit }}</h2>
-                <div class="report-table-wrap compact">
-                    <table class="report-table">
-                        <thead>
-                            <tr>
-                                <th>Dəhliz</th>
-                                <th>{{ transit_dynamics_report.annual_years.previous }}</th>
-                                <th>{{ transit_dynamics_report.annual_years.current }}</th>
-                                <th>{{ transit_dynamics_report.partial_years.previous }}</th>
-                                <th>{{ transit_dynamics_report.partial_years.current }}</th>
-                                <th>Dinamika</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for row in transit_dynamics_report.corridors.rows %}
-                                <tr>
-                                    <td>{{ row.label }}</td>
-                                    <td>{{ row.annual_previous }}</td>
-                                    <td>{{ row.annual_current }}</td>
-                                    <td>{{ row.partial_previous }}</td>
-                                    <td>{{ row.partial_current }}</td>
-                                    <td class="report-dynamic {{ row.dynamic_direction }}">{{ row.dynamic }}</td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </article>
-
-            <article class="report-section">
-                <h2>3. Əsas məhsullar üzrə tranzit daşımalar, {{ transit_dynamics_report.unit }}</h2>
-                <div class="report-table-wrap compact">
-                    <table class="report-table">
-                        <thead>
-                            <tr>
-                                <th>Məhsul adı (qısaldılmış)</th>
-                                <th>{{ transit_dynamics_report.annual_years.previous }}</th>
-                                <th>{{ transit_dynamics_report.annual_years.current }}</th>
-                                <th>{{ transit_dynamics_report.partial_years.previous }}</th>
-                                <th>{{ transit_dynamics_report.partial_years.current }}</th>
-                                <th>Dinamika</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for row in transit_dynamics_report.products.rows %}
-                                <tr>
-                                    <td>{{ row.label }}</td>
-                                    <td>{{ row.annual_previous }}</td>
-                                    <td>{{ row.annual_current }}</td>
-                                    <td>{{ row.partial_previous }}</td>
-                                    <td>{{ row.partial_current }}</td>
-                                    <td class="report-dynamic {{ row.dynamic_direction }}">{{ row.dynamic }}</td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </article>
-
-            <article class="report-section">
-                <h2>4. Göndərən ölkələr üzrə tranzit daşımalar, {{ transit_dynamics_report.unit }}</h2>
-                <div class="report-table-wrap compact">
-                    <table class="report-table">
-                        <thead>
-                            <tr>
-                                <th>Göndərən ölkə</th>
-                                <th>{{ transit_dynamics_report.annual_years.previous }}</th>
-                                <th>{{ transit_dynamics_report.annual_years.current }}</th>
-                                <th>{{ transit_dynamics_report.partial_years.previous }}</th>
-                                <th>{{ transit_dynamics_report.partial_years.current }}</th>
-                                <th>Dinamika</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for row in transit_dynamics_report.sender_countries.rows %}
-                                <tr>
-                                    <td>{{ row.label }}</td>
-                                    <td>{{ row.annual_previous }}</td>
-                                    <td>{{ row.annual_current }}</td>
-                                    <td>{{ row.partial_previous }}</td>
-                                    <td>{{ row.partial_current }}</td>
-                                    <td class="report-dynamic {{ row.dynamic_direction }}">{{ row.dynamic }}</td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </article>
-
-            <article class="report-section">
-                <h2>5. Təyinat ölkələr üzrə tranzit daşımalar, {{ transit_dynamics_report.unit }}</h2>
-                <div class="report-table-wrap compact">
-                    <table class="report-table">
-                        <thead>
-                            <tr>
-                                <th>Təyinat ölkə</th>
-                                <th>{{ transit_dynamics_report.annual_years.previous }}</th>
-                                <th>{{ transit_dynamics_report.annual_years.current }}</th>
-                                <th>{{ transit_dynamics_report.partial_years.previous }}</th>
-                                <th>{{ transit_dynamics_report.partial_years.current }}</th>
-                                <th>Dinamika</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for row in transit_dynamics_report.destination_countries.rows %}
-                                <tr>
-                                    <td>{{ row.label }}</td>
-                                    <td>{{ row.annual_previous }}</td>
-                                    <td>{{ row.annual_current }}</td>
-                                    <td>{{ row.partial_previous }}</td>
-                                    <td>{{ row.partial_current }}</td>
-                                    <td class="report-dynamic {{ row.dynamic_direction }}">{{ row.dynamic }}</td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </article>
-        </section>
-    {% endif %}
+{% if transit_dynamics_reports %}
+    {% for report in transit_dynamics_reports %}
+        {% include "dashboard/includes/transit_dynamics_report_panel.html" %}
+    {% endfor %}
 {% endif %}
 
 {% if transit_data %}
@@ -319,7 +167,7 @@
 </section>
 {% endif %}
 
-{% if not transit_data and not transit_dynamics_report %}
+{% if not transit_data and not transit_dynamics_report and not transit_dynamics_language_options %}
 <section>
     <h2>Reports</h2>
     <div class="card-grid">
@@ -339,5 +187,133 @@
     {% endfor %}
     </div>
 </section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{{ block.super }}
+{% if transit_dynamics_language_options %}
+<script>
+(function () {
+    const tabs = document.querySelectorAll('[data-language-tab]');
+    const panels = document.querySelectorAll('[data-language-panel]');
+
+    tabs.forEach((tab) => {
+        tab.addEventListener('click', () => {
+            const language = tab.dataset.languageTab;
+
+            tabs.forEach((item) => {
+                const isActive = item.dataset.languageTab === language;
+                item.classList.toggle('active', isActive);
+                item.setAttribute('aria-selected', isActive ? 'true' : 'false');
+            });
+
+            panels.forEach((panel) => {
+                const isActive = panel.dataset.languagePanel === language;
+                panel.hidden = !isActive;
+                panel.classList.toggle('active', isActive);
+            });
+
+            const switcher = tab.closest('[data-track-url]');
+            if (switcher && window.fetch) {
+                const payload = new FormData();
+                payload.append('module_slug', switcher.dataset.moduleSlug || '');
+                payload.append('submodule_slug', switcher.dataset.submoduleSlug || '');
+                payload.append('report_name', switcher.dataset.reportName || '');
+                payload.append('report_number', switcher.dataset.reportNumber || '');
+                payload.append('month', switcher.dataset.selectedMonth || '');
+                payload.append('country', switcher.dataset.selectedCountry || '');
+                payload.append('language', language);
+                payload.append('target_url', window.location.pathname + window.location.search);
+                fetch(switcher.dataset.trackUrl, {
+                    method: 'POST',
+                    body: payload,
+                    headers: {'X-CSRFToken': '{{ csrf_token }}'},
+                    credentials: 'same-origin',
+                }).catch(() => {});
+            }
+        });
+    });
+
+    const countryCombobox = document.querySelector('[data-country-combobox]');
+
+    if (countryCombobox) {
+        const countryInput = countryCombobox.querySelector('[data-country-input]');
+        const countryValue = countryCombobox.querySelector('[data-country-value]');
+        const countryOptionsPanel = countryCombobox.querySelector('[data-country-options]');
+        const countryEmpty = countryCombobox.querySelector('[data-country-empty]');
+        const countryOptions = Array.from(countryCombobox.querySelectorAll('[data-country-option]'));
+
+        const setPanelOpen = (isOpen) => {
+            countryOptionsPanel.hidden = !isOpen;
+            countryInput.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        };
+
+        const filterCountries = () => {
+            const query = countryInput.value.trim().toLocaleLowerCase('az');
+            let visibleCount = 0;
+
+            countryOptions.forEach((option) => {
+                const country = option.dataset.countryOption || '';
+                const isVisible = !query || country.toLocaleLowerCase('az').includes(query);
+                option.hidden = !isVisible;
+                if (isVisible) {
+                    visibleCount += 1;
+                }
+            });
+
+            if (countryEmpty) {
+                countryEmpty.hidden = visibleCount > 0;
+            }
+        };
+
+        const selectCountry = (option) => {
+            const country = option.dataset.countryOption;
+            countryInput.value = country;
+            countryValue.value = country;
+            countryOptions.forEach((item) => {
+                const isActive = item === option;
+                item.classList.toggle('active', isActive);
+                item.setAttribute('aria-selected', isActive ? 'true' : 'false');
+            });
+            setPanelOpen(false);
+        };
+
+        countryInput.addEventListener('focus', () => {
+            filterCountries();
+            setPanelOpen(true);
+        });
+
+        countryInput.addEventListener('input', () => {
+            filterCountries();
+            setPanelOpen(true);
+        });
+
+        countryInput.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter') {
+                return;
+            }
+            event.preventDefault();
+            const firstVisible = countryOptions.find((option) => !option.hidden);
+            if (firstVisible) {
+                selectCountry(firstVisible);
+            }
+        });
+
+        countryOptions.forEach((option) => {
+            option.addEventListener('click', () => selectCountry(option));
+        });
+
+        document.addEventListener('click', (event) => {
+            if (!countryCombobox.contains(event.target)) {
+                setPanelOpen(false);
+            }
+        });
+
+        filterCountries();
+    }
+
+}());
+</script>
 {% endif %}
 {% endblock %}

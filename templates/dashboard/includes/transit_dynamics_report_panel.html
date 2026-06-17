@@ -1,0 +1,192 @@
+<div class="language-panel{% if forloop.first %} active{% endif %}" data-language-panel="{{ report.language }}" {% if not forloop.first %}hidden{% endif %}>
+    {% if not report.available %}
+        <section class="panel">
+            <h2>{{ report.text.unavailable_title }}</h2>
+            <p class="muted">{{ report.message }}</p>
+        </section>
+    {% else %}
+        <section class="panel report-panel">
+            <article class="report-section">
+                <p class="report-number">{{ report.text.report_number_label }}: {{ report.report_number }}</p>
+                <h2 class="report-title">{{ report.text.title }}</h2>
+                <h2>{{ report.text.sections.transport.title }}, {{ report.unit }}</h2>
+                <div class="report-narrative">
+                    <p><strong>{{ report.transport.annual_summary }}</strong></p>
+                    <ul>
+                        {% for item in report.transport.bullets_annual %}
+                            <li>
+                                <strong>{{ item.narrative_label }}:</strong>
+                                {{ item.value }} {{ report.text.value_suffix }}
+                                <span class="report-dynamic {{ item.direction }}">({{ item.change }})</span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                    <p><strong>{{ report.transport.partial_summary }}</strong></p>
+                    <ul>
+                        {% for item in report.transport.bullets_partial %}
+                            <li>
+                                <strong>{{ item.narrative_label }}:</strong>
+                                {{ item.value }} {{ report.text.value_suffix }}
+                                <span class="report-dynamic {{ item.direction }}">({{ item.change }})</span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                <div class="report-table-wrap">
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>{{ report.text.sections.transport.column }}</th>
+                                <th>{{ report.annual_years.previous }}</th>
+                                <th>{{ report.annual_years.current }}</th>
+                                <th>{{ report.partial_years.previous }}</th>
+                                <th>{{ report.partial_years.current }}</th>
+                                <th>{{ report.text.dynamic }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in report.transport.rows %}
+                                <tr>
+                                    <td>{{ row.label }}</td>
+                                    <td>{{ row.annual_previous }}</td>
+                                    <td>{{ row.annual_current }}</td>
+                                    <td>{{ row.partial_previous }}</td>
+                                    <td>{{ row.partial_current }}</td>
+                                    <td class="report-dynamic {{ row.dynamic_direction }}">{{ row.dynamic }}</td>
+                                </tr>
+                            {% endfor %}
+                            <tr class="report-total-row">
+                                <td>{{ report.transport.total.label }}</td>
+                                <td>{{ report.transport.total.annual_previous }}</td>
+                                <td>{{ report.transport.total.annual_current }}</td>
+                                <td>{{ report.transport.total.partial_previous }}</td>
+                                <td>{{ report.transport.total.partial_current }}</td>
+                                <td class="report-dynamic {{ report.transport.total.dynamic_direction }}">{{ report.transport.total.dynamic }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="report-section">
+                <h2>{{ report.text.sections.corridors.title }}, {{ report.unit }}</h2>
+                <div class="report-table-wrap compact">
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>{{ report.text.sections.corridors.column }}</th>
+                                <th>{{ report.annual_years.previous }}</th>
+                                <th>{{ report.annual_years.current }}</th>
+                                <th>{{ report.partial_years.previous }}</th>
+                                <th>{{ report.partial_years.current }}</th>
+                                <th>{{ report.text.dynamic }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in report.corridors.rows %}
+                                <tr>
+                                    <td>{{ row.label }}</td>
+                                    <td>{{ row.annual_previous }}</td>
+                                    <td>{{ row.annual_current }}</td>
+                                    <td>{{ row.partial_previous }}</td>
+                                    <td>{{ row.partial_current }}</td>
+                                    <td class="report-dynamic {{ row.dynamic_direction }}">{{ row.dynamic }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="report-section">
+                <h2>{{ report.text.sections.products.title }}, {{ report.unit }}</h2>
+                <div class="report-table-wrap compact">
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>{{ report.text.sections.products.column }}</th>
+                                <th>{{ report.annual_years.previous }}</th>
+                                <th>{{ report.annual_years.current }}</th>
+                                <th>{{ report.partial_years.previous }}</th>
+                                <th>{{ report.partial_years.current }}</th>
+                                <th>{{ report.text.dynamic }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in report.products.rows %}
+                                <tr>
+                                    <td>{{ row.label }}</td>
+                                    <td>{{ row.annual_previous }}</td>
+                                    <td>{{ row.annual_current }}</td>
+                                    <td>{{ row.partial_previous }}</td>
+                                    <td>{{ row.partial_current }}</td>
+                                    <td class="report-dynamic {{ row.dynamic_direction }}">{{ row.dynamic }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="report-section">
+                <h2>{{ report.text.sections.sender_countries.title }}, {{ report.unit }}</h2>
+                <div class="report-table-wrap compact">
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>{{ report.text.sections.sender_countries.column }}</th>
+                                <th>{{ report.annual_years.previous }}</th>
+                                <th>{{ report.annual_years.current }}</th>
+                                <th>{{ report.partial_years.previous }}</th>
+                                <th>{{ report.partial_years.current }}</th>
+                                <th>{{ report.text.dynamic }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in report.sender_countries.rows %}
+                                <tr>
+                                    <td>{{ row.label }}</td>
+                                    <td>{{ row.annual_previous }}</td>
+                                    <td>{{ row.annual_current }}</td>
+                                    <td>{{ row.partial_previous }}</td>
+                                    <td>{{ row.partial_current }}</td>
+                                    <td class="report-dynamic {{ row.dynamic_direction }}">{{ row.dynamic }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="report-section">
+                <h2>{{ report.text.sections.destination_countries.title }}, {{ report.unit }}</h2>
+                <div class="report-table-wrap compact">
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>{{ report.text.sections.destination_countries.column }}</th>
+                                <th>{{ report.annual_years.previous }}</th>
+                                <th>{{ report.annual_years.current }}</th>
+                                <th>{{ report.partial_years.previous }}</th>
+                                <th>{{ report.partial_years.current }}</th>
+                                <th>{{ report.text.dynamic }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in report.destination_countries.rows %}
+                                <tr>
+                                    <td>{{ row.label }}</td>
+                                    <td>{{ row.annual_previous }}</td>
+                                    <td>{{ row.annual_current }}</td>
+                                    <td>{{ row.partial_previous }}</td>
+                                    <td>{{ row.partial_current }}</td>
+                                    <td class="report-dynamic {{ row.dynamic_direction }}">{{ row.dynamic }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+        </section>
+    {% endif %}
+</div>

@@ -1,3 +1,4 @@
+from copy import deepcopy
 from datetime import date
 from io import BytesIO
 
@@ -12,9 +13,14 @@ from docx.shared import Inches, Pt, RGBColor
 
 from apps.dashboard.transit_periods import (
     TransitDataPeriods,
+    compute_transit_data_periods,
     format_dynamics_report_number,
     load_transit_data_periods,
 )
+from apps.dashboard.transit_value_translations import translate_transit_value
+from apps.imports.services.goods_nomenclature_short import goods_nomenclature_short_data
+from apps.imports.services.goods_nomenclature_short_English import goods_nomenclature_short_english_data
+from apps.imports.services.goods_nomenclature_short_Russian import goods_nomenclature_short_russian_data
 
 PAGE_SIZE = 100
 DOWNLOAD_LIMIT = 500
@@ -1165,6 +1171,144 @@ def report_rows_for_dimension(column, periods: TransitDataPeriods, *, limit=8, p
     return rows
 
 
+
+def report_country_filter_clause():
+    return f"({quote_name('Göndərən ölkə')} = %s OR {quote_name('Təyinat ölkə')} = %s)"
+
+
+def report_period_total_for_country(column, value, start_date, end_date, country):
+    transport_placeholders = ", ".join(["%s"] * len(DASHBOARD_DEFAULT_TRANSPORTS))
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT COALESCE(SUM({quote_name(DASHBOARD_VALUE_COLUMN)}), 0)::double precision
+            FROM {dashboard_qualified_table()}
+            WHERE {quote_name(column)} = %s
+              AND {report_country_filter_clause()}
+              AND {quote_name('Nəqliyyat növü')} IN ({transport_placeholders})
+              AND {quote_name(DASHBOARD_DATE_COLUMN)}::date >= %s
+              AND {quote_name(DASHBOARD_DATE_COLUMN)}::date < %s
+            """,
+            [value, country, country, *DASHBOARD_DEFAULT_TRANSPORTS, start_date, end_date],
+        )
+        return float(cursor.fetchone()[0] or 0)
+
+
+def report_total_for_country(start_date, end_date, country):
+    transport_placeholders = ", ".join(["%s"] * len(DASHBOARD_DEFAULT_TRANSPORTS))
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT COALESCE(SUM({quote_name(DASHBOARD_VALUE_COLUMN)}), 0)::double precision
+            FROM {dashboard_qualified_table()}
+            WHERE {report_country_filter_clause()}
+              AND {quote_name('Nəqliyyat növü')} IN ({transport_placeholders})
+              AND {quote_name(DASHBOARD_DATE_COLUMN)}::date >= %s
+              AND {quote_name(DASHBOARD_DATE_COLUMN)}::date < %s
+            """,
+            [country, country, *DASHBOARD_DEFAULT_TRANSPORTS, start_date, end_date],
+        )
+        return float(cursor.fetchone()[0] or 0)
+
+
+def report_total_for_values_and_country(column, values, periods: TransitDataPeriods, country):
+    return build_report_row(
+        "Total",
+        {
+            "annual_previous": sum(
+                report_period_total_for_country(column, value, periods.annual_previous_start, periods.annual_previous_end, country)
+                for value in values
+            ),
+            "annual_current": sum(
+                report_period_total_for_country(column, value, periods.annual_current_start, periods.annual_current_end, country)
+                for value in values
+            ),
+            "partial_previous": sum(
+                report_period_total_for_country(column, value, periods.partial_previous_start, periods.partial_previous_end, country)
+                for value in values
+            ),
+            "partial_current": sum(
+                report_period_total_for_country(column, value, periods.partial_current_start, periods.partial_current_end, country)
+                for value in values
+            ),
+        },
+    )
+
+
+def report_top_values_for_country(column, start_date, end_date, country, *, limit=8, preferred_values=None):
+    if preferred_values:
+        return preferred_values
+
+    quoted_column = quote_name(column)
+    transport_placeholders = ", ".join(["%s"] * len(DASHBOARD_DEFAULT_TRANSPORTS))
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT {quoted_column}, COALESCE(SUM({quote_name(DASHBOARD_VALUE_COLUMN)}), 0)::double precision AS value
+            FROM {dashboard_qualified_table()}
+            WHERE {report_country_filter_clause()}
+              AND {quote_name('Nəqliyyat növü')} IN ({transport_placeholders})
+              AND {quote_name(DASHBOARD_DATE_COLUMN)}::date >= %s
+              AND {quote_name(DASHBOARD_DATE_COLUMN)}::date < %s
+              AND {quoted_column} IS NOT NULL
+              AND btrim({quoted_column}::text) <> ''
+            GROUP BY {quoted_column}
+            ORDER BY value DESC
+            LIMIT %s
+            """,
+            [country, country, *DASHBOARD_DEFAULT_TRANSPORTS, start_date, end_date, limit],
+        )
+        return [row[0] for row in cursor.fetchall()]
+
+
+def report_rows_for_dimension_and_country(column, periods: TransitDataPeriods, country, *, limit=8, preferred_values=None):
+    labels = report_top_values_for_country(
+        column,
+        periods.partial_current_start,
+        periods.partial_current_end,
+        country,
+        limit=limit,
+        preferred_values=preferred_values,
+    )
+    return [
+        build_report_row(
+            label,
+            {
+                "annual_previous": report_period_total_for_country(
+                    column, label, periods.annual_previous_start, periods.annual_previous_end, country
+                ),
+                "annual_current": report_period_total_for_country(
+                    column, label, periods.annual_current_start, periods.annual_current_end, country
+                ),
+                "partial_previous": report_period_total_for_country(
+                    column, label, periods.partial_previous_start, periods.partial_previous_end, country
+                ),
+                "partial_current": report_period_total_for_country(
+                    column, label, periods.partial_current_start, periods.partial_current_end, country
+                ),
+            },
+        )
+        for label in labels
+    ]
+
+
+def get_transit_report_country_values():
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT country
+            FROM (
+                SELECT {quote_name('Göndərən ölkə')} AS country FROM {dashboard_qualified_table()}
+                UNION
+                SELECT {quote_name('Təyinat ölkə')} AS country FROM {dashboard_qualified_table()}
+            ) countries
+            WHERE country IS NOT NULL AND btrim(country::text) <> ''
+            ORDER BY country
+            """
+        )
+        return [row[0] for row in cursor.fetchall()]
+
+
 def report_summary_totals(periods: TransitDataPeriods):
     values = {
         "annual_previous": report_total(periods.annual_previous_start, periods.annual_previous_end),
@@ -1216,7 +1360,7 @@ def report_sentence(row, period="partial"):
     }
 
 
-def get_transit_dynamics_report_context():
+def get_transit_dynamics_report_context(selected_month=None):
     if not dashboard_table_exists():
         return {
             "available": False,
@@ -1226,8 +1370,8 @@ def get_transit_dynamics_report_context():
             ),
         }
 
-    periods = load_transit_data_periods()
-    if periods is None:
+    max_periods = load_transit_data_periods()
+    if max_periods is None:
         return {
             "available": False,
             "message": (
@@ -1235,6 +1379,11 @@ def get_transit_dynamics_report_context():
                 "və transit_for_dashboard_on_ministry_portal cədvəlini yenidən yaradın."
             ),
         }
+
+    if selected_month is None:
+        selected_month = max_periods.reference_month
+    selected_month = max(1, min(int(selected_month), max_periods.reference_month))
+    periods = compute_transit_data_periods(max_periods.reference_year, selected_month)
 
     transport_rows = report_rows_for_dimension(
         "Nəqliyyat növü",
@@ -1250,6 +1399,8 @@ def get_transit_dynamics_report_context():
     return {
         "available": True,
         "report_number": format_dynamics_report_number(periods),
+        "selected_month": periods.reference_month,
+        "max_month": max_periods.reference_month,
         "unit": "min tonla",
         "annual_years": {
             "previous": periods.annual_year_previous,
@@ -1273,6 +1424,317 @@ def get_transit_dynamics_report_context():
         "sender_countries": {"rows": sender_country_rows},
         "destination_countries": {"rows": destination_country_rows},
     }
+
+
+TRANSIT_DYNAMICS_REPORT_TEXTS = {
+    "az": {
+        "intro": "Tranzit daşımaların əsas dinamika göstəriciləri.",
+        "unavailable_title": "Hesabat hazır deyil",
+        "unavailable_message": None,
+        "report_number_label": "Hesabat nömrəsi",
+        "title": "Azərbaycan Üzərindən Tranzit Rejimdə Daşınmış Yüklərin Dinamika Hesabatı",
+        "unit": "min tonla",
+        "annual_sentence": "{year}-ci ildə tranzit daşımaların həcmi {value} ({change}) min ton təşkil etmişdir.",
+        "partial_sentence": "{period} tranzit daşımaların həcmi {value} ({change}) min ton təşkil etmişdir:",
+        "value_suffix": "min ton",
+        "dynamic": "Dinamika",
+        "sections": {
+            "transport": {"title": "1. Nəqliyyat növü üzrə tranzit daşımalar", "column": "Nəqliyyat növü"},
+            "corridors": {"title": "2. Əsas dəhlizlər üzrə tranzit daşımalar", "column": "Dəhliz"},
+            "products": {"title": "3. Əsas məhsullar üzrə tranzit daşımalar", "column": "Məhsul adı (qısaldılmış)"},
+            "sender_countries": {"title": "4. Göndərən ölkələr üzrə tranzit daşımalar", "column": "Göndərən ölkə"},
+            "destination_countries": {"title": "5. Təyinat ölkələr üzrə tranzit daşımalar", "column": "Təyinat ölkə"},
+        },
+    },
+    "en": {
+        "intro": "Main dynamics indicators for transit shipments.",
+        "unavailable_title": "Report is not ready",
+        "unavailable_message": "The report table is not ready or no reporting date was found. Rebuild the transit dashboard table first.",
+        "report_number_label": "Report number",
+        "title": "Dynamics Report on Cargo Transported in Transit Mode Through Azerbaijan",
+        "unit": "thousand tons",
+        "annual_sentence": "In {year}, transit shipment volume amounted to {value} ({change}) thousand tons.",
+        "partial_sentence": "In {period}, transit shipment volume amounted to {value} ({change}) thousand tons:",
+        "value_suffix": "thousand tons",
+        "dynamic": "Dynamics",
+        "sections": {
+            "transport": {"title": "1. Transit shipments by mode of transport", "column": "Mode of transport"},
+            "corridors": {"title": "2. Transit shipments by main corridors", "column": "Corridor"},
+            "products": {"title": "3. Transit shipments by main products", "column": "Product name (shortened)"},
+            "sender_countries": {"title": "4. Transit shipments by sender countries", "column": "Sender country"},
+            "destination_countries": {"title": "5. Transit shipments by destination countries", "column": "Destination country"},
+        },
+    },
+    "ru": {
+        "intro": "Основные динамические показатели транзитных перевозок.",
+        "unavailable_title": "Отчет не готов",
+        "unavailable_message": "Таблица отчета не готова или отчетная дата не найдена. Сначала пересоздайте таблицу транзитного дашборда.",
+        "report_number_label": "Номер отчета",
+        "title": "Отчет о динамике грузов, перевезенных в транзитном режиме через Азербайджан",
+        "unit": "тыс. тонн",
+        "annual_sentence": "В {year} году объем транзитных перевозок составил {value} ({change}) тыс. тонн.",
+        "partial_sentence": "За {period} объем транзитных перевозок составил {value} ({change}) тыс. тонн:",
+        "value_suffix": "тыс. тонн",
+        "dynamic": "Динамика",
+        "sections": {
+            "transport": {"title": "1. Транзитные перевозки по видам транспорта", "column": "Вид транспорта"},
+            "corridors": {"title": "2. Транзитные перевозки по основным коридорам", "column": "Коридор"},
+            "products": {"title": "3. Транзитные перевозки по основным товарам", "column": "Наименование товара (сокращенное)"},
+            "sender_countries": {"title": "4. Транзитные перевозки по странам отправления", "column": "Страна отправления"},
+            "destination_countries": {"title": "5. Транзитные перевозки по странам назначения", "column": "Страна назначения"},
+        },
+    },
+}
+
+
+TRANSIT_TRANSPORT_NARRATIVE_TRANSLATIONS = {
+    "az": {
+        "Avtomobil": "Avtomobil yolu ilə",
+        "Hava": "Hava yolu ilə",
+    },
+    "en": {
+        "Avtomobil": "By road",
+        "Boru": "By pipeline",
+        "Dəmiryolu": "By railway",
+        "Dəniz": "By sea",
+        "Hava": "By air",
+    },
+    "ru": {
+        "Avtomobil": "Автомобильным транспортом",
+        "Boru": "Трубопроводным транспортом",
+        "Dəmiryolu": "Железнодорожным транспортом",
+        "Dəniz": "Морским транспортом",
+        "Hava": "Воздушным транспортом",
+    },
+}
+
+
+def _flatten_short_goods(data):
+    return [category["name"] for section in data for category in section["categories"]]
+
+
+TRANSIT_PRODUCT_TRANSLATIONS = {
+    "en": dict(zip(_flatten_short_goods(goods_nomenclature_short_data), _flatten_short_goods(goods_nomenclature_short_english_data))),
+    "ru": dict(zip(_flatten_short_goods(goods_nomenclature_short_data), _flatten_short_goods(goods_nomenclature_short_russian_data))),
+}
+
+
+def translate_transit_product_value(value, language):
+    if language == "az" or value in (None, ""):
+        return value
+    return TRANSIT_PRODUCT_TRANSLATIONS.get(language, {}).get(value, value)
+
+
+def translate_transit_partial_label(label, language):
+    if language == "az":
+        return label
+    parts = str(label).split("-cı ilin ilk ", 1)
+    if len(parts) != 2:
+        return label
+    year, rest = parts
+    months = rest.split(" ayında", 1)[0]
+    if language == "en":
+        return f"the first {months} months of {year}"
+    if language == "ru":
+        return f"первые {months} месяцев {year} года"
+    return label
+
+
+def translate_transit_report_row(row, dimension, language):
+    translated = deepcopy(row)
+    if dimension == "Məhsul adı (qısaldılmış)":
+        translated["label"] = translate_transit_product_value(row["label"], language)
+    elif dimension == "Total":
+        translated["label"] = {"az": row["label"], "en": "Total", "ru": "Итого"}.get(language, row["label"])
+    else:
+        translated["label"] = translate_transit_value(dimension, row["label"], language)
+    return translated
+
+
+def translate_transit_report_sentence(sentence, language):
+    translated = deepcopy(sentence)
+    label = sentence.get("label")
+    translated["label"] = translate_transit_value("Nəqliyyat növü", label, language)
+    translated["narrative_label"] = TRANSIT_TRANSPORT_NARRATIVE_TRANSLATIONS.get(language, {}).get(
+        label,
+        translated["label"],
+    )
+    return translated
+
+
+def get_transit_dynamics_report_context_for_language(base_context, language):
+    context = deepcopy(base_context)
+    text = deepcopy(TRANSIT_DYNAMICS_REPORT_TEXTS[language])
+    context["language"] = language
+    context["text"] = text
+
+    if not context.get("available"):
+        if language != "az":
+            context["message"] = text["unavailable_message"]
+        return context
+
+    context["unit"] = text["unit"]
+    context["partial_years"]["label"] = translate_transit_partial_label(context["partial_years"]["label"], language)
+    context["transport"]["annual_summary"] = text["annual_sentence"].format(
+        year=context["annual_years"]["current"],
+        value=context["transport"]["annual_sentence"]["value"],
+        change=context["transport"]["annual_sentence"]["change"],
+    )
+    context["transport"]["partial_summary"] = text["partial_sentence"].format(
+        period=context["partial_years"]["label"],
+        value=context["transport"]["partial_sentence"]["value"],
+        change=context["transport"]["partial_sentence"]["change"],
+    )
+    context["transport"]["rows"] = [
+        translate_transit_report_row(row, "Nəqliyyat növü", language)
+        for row in base_context["transport"]["rows"]
+    ]
+    context["transport"]["total"] = translate_transit_report_row(base_context["transport"]["total"], "Total", language)
+    context["transport"]["annual_sentence"] = translate_transit_report_sentence(
+        base_context["transport"]["annual_sentence"], language
+    )
+    context["transport"]["partial_sentence"] = translate_transit_report_sentence(
+        base_context["transport"]["partial_sentence"], language
+    )
+    context["transport"]["bullets_annual"] = [
+        translate_transit_report_sentence(item, language)
+        for item in base_context["transport"]["bullets_annual"]
+    ]
+    context["transport"]["bullets_partial"] = [
+        translate_transit_report_sentence(item, language)
+        for item in base_context["transport"]["bullets_partial"]
+    ]
+    context["corridors"]["rows"] = [
+        translate_transit_report_row(row, "Dəhliz", language)
+        for row in base_context["corridors"]["rows"]
+    ]
+    context["products"]["rows"] = [
+        translate_transit_report_row(row, "Məhsul adı (qısaldılmış)", language)
+        for row in base_context["products"]["rows"]
+    ]
+    context["sender_countries"]["rows"] = [
+        translate_transit_report_row(row, "Göndərən ölkə", language)
+        for row in base_context["sender_countries"]["rows"]
+    ]
+    context["destination_countries"]["rows"] = [
+        translate_transit_report_row(row, "Təyinat ölkə", language)
+        for row in base_context["destination_countries"]["rows"]
+    ]
+    return context
+
+
+def get_transit_dynamics_report_contexts(base_context):
+    return [
+        get_transit_dynamics_report_context_for_language(base_context, language)
+        for language in ("az", "en", "ru")
+    ]
+
+
+
+def format_country_report_number(periods: TransitDataPeriods) -> str:
+    return f"TR-002-{periods.reference_year}/{periods.reference_month:02d}-Ölkələr"
+
+
+def get_transit_country_report_context(selected_month=None, selected_country=None):
+    if not dashboard_table_exists():
+        return {
+            "available": False,
+            "message": (
+                "Hesabat cədvəli hazır deyil. Əvvəlcə transit_for_dashboard_on_ministry_portal "
+                "cədvəlini yenidən yaradın."
+            ),
+        }
+
+    max_periods = load_transit_data_periods()
+    if max_periods is None:
+        return {
+            "available": False,
+            "message": (
+                "Hesabat üçün çıxış tarixi tapılmadı. Əvvəlcə transit məlumatlarını idxal edin "
+                "və transit_for_dashboard_on_ministry_portal cədvəlini yenidən yaradın."
+            ),
+        }
+
+    countries = get_transit_report_country_values()
+    if not countries:
+        return {
+            "available": False,
+            "message": "Ölkələr üzrə hesabat üçün ölkə məlumatı tapılmadı.",
+        }
+
+    if selected_country not in countries:
+        selected_country = "Türkiyə" if "Türkiyə" in countries else countries[0]
+
+    if selected_month is None:
+        selected_month = max_periods.reference_month
+    selected_month = max(1, min(int(selected_month), max_periods.reference_month))
+    periods = compute_transit_data_periods(max_periods.reference_year, selected_month)
+
+    transport_rows = report_rows_for_dimension_and_country(
+        "Nəqliyyat növü",
+        periods,
+        selected_country,
+        preferred_values=DASHBOARD_DEFAULT_TRANSPORTS,
+    )
+    corridor_rows = report_rows_for_dimension_and_country("Dəhliz", periods, selected_country, limit=REPORT_TOP_LIMIT)
+    product_rows = report_rows_for_dimension_and_country(
+        "Məhsul adı (qısaldılmış)", periods, selected_country, limit=REPORT_TOP_LIMIT
+    )
+    sender_country_rows = report_rows_for_dimension_and_country(
+        "Göndərən ölkə", periods, selected_country, limit=REPORT_TOP_LIMIT
+    )
+    destination_country_rows = report_rows_for_dimension_and_country(
+        "Təyinat ölkə", periods, selected_country, limit=REPORT_TOP_LIMIT
+    )
+    total_row = report_total_for_values_and_country("Nəqliyyat növü", DASHBOARD_DEFAULT_TRANSPORTS, periods, selected_country)
+
+    return {
+        "available": True,
+        "report_type": "countries",
+        "report_number": format_country_report_number(periods),
+        "selected_month": periods.reference_month,
+        "max_month": max_periods.reference_month,
+        "selected_country": selected_country,
+        "country_options": countries,
+        "unit": "min tonla",
+        "annual_years": {
+            "previous": periods.annual_year_previous,
+            "current": periods.annual_year_current,
+        },
+        "partial_years": {
+            "previous": periods.partial_previous_header,
+            "current": periods.partial_current_header,
+            "label": periods.partial_label,
+        },
+        "transport": {
+            "rows": transport_rows,
+            "total": total_row,
+            "annual_sentence": report_sentence(total_row, period="annual"),
+            "partial_sentence": report_sentence(total_row, period="partial"),
+            "bullets_annual": [report_sentence(row, period="annual") for row in transport_rows],
+            "bullets_partial": [report_sentence(row, period="partial") for row in transport_rows],
+        },
+        "corridors": {"rows": corridor_rows},
+        "products": {"rows": product_rows},
+        "sender_countries": {"rows": sender_country_rows},
+        "destination_countries": {"rows": destination_country_rows},
+    }
+
+
+def get_transit_country_report_contexts(base_context):
+    reports = get_transit_dynamics_report_contexts(base_context)
+    for report in reports:
+        if not report.get("available"):
+            continue
+        language = report["language"]
+        country = translate_transit_value("Göndərən ölkə", base_context["selected_country"], language)
+        if language == "en":
+            report["text"]["title"] = f"Transit Shipments Report Between Azerbaijan and {country}"
+        elif language == "ru":
+            report["text"]["title"] = f"Отчет о транзитных перевозках: Азербайджан - {country}"
+        else:
+            report["text"]["title"] = f"Azərbaycan və {country} arasında tranzit daşımalar hesabatı"
+    return reports
 
 
 DOCX_HEADER_FILL = "073763"
@@ -1375,10 +1837,20 @@ def _style_docx_table_value_cell(cell, value, *, row_data=None, cell_index=0, bo
     )
 
 
+def _set_report_docx_table_widths(table):
+    column_widths = [Inches(2)] + [Inches(1.1)] * (len(table.columns) - 1)
+    table.autofit = False
+    for column_index, width in enumerate(column_widths):
+        table.columns[column_index].width = width
+        for cell in table.columns[column_index].cells:
+            cell.width = width
+
+
 def _add_report_docx_table(document, headers, rows, total_row=None):
     table_rows = len(rows) + 1 + (1 if total_row else 0)
     table = document.add_table(rows=table_rows, cols=len(headers))
     table.style = "Table Grid"
+    _set_report_docx_table_widths(table)
 
     for index, header in enumerate(headers):
         cell = table.rows[0].cells[index]
@@ -1427,7 +1899,65 @@ def _add_report_docx_table(document, headers, rows, total_row=None):
     document.add_paragraph()
 
 
+def _add_transit_docx_summary(document, report_context, *, period):
+    language = report_context.get("language", "az")
+    transport = report_context["transport"]
+    text = report_context.get("text", TRANSIT_DYNAMICS_REPORT_TEXTS["az"])
+    value_suffix = text["value_suffix"]
+
+    if period == "annual":
+        sentence = transport["annual_sentence"]
+        if language == "en":
+            before_change = (
+                f"In {report_context['annual_years']['current']}, transit shipment volume "
+                f"amounted to {sentence['value']} "
+            )
+            after_change = f" {value_suffix}."
+        elif language == "ru":
+            before_change = (
+                f"В {report_context['annual_years']['current']} году объем транзитных перевозок "
+                f"составил {sentence['value']} "
+            )
+            after_change = f" {value_suffix}."
+        else:
+            before_change = (
+                f"{report_context['annual_years']['current']}-ci ildə tranzit daşımaların həcmi "
+                f"{sentence['value']} "
+            )
+            after_change = " min ton təşkil etmişdir."
+    else:
+        sentence = transport["partial_sentence"]
+        if language == "en":
+            before_change = (
+                f"In {report_context['partial_years']['label']}, transit shipment volume "
+                f"amounted to {sentence['value']} "
+            )
+            after_change = f" {value_suffix}:"
+        elif language == "ru":
+            before_change = (
+                f"За {report_context['partial_years']['label']} объем транзитных перевозок "
+                f"составил {sentence['value']} "
+            )
+            after_change = f" {value_suffix}:"
+        else:
+            before_change = (
+                f"{report_context['partial_years']['label']} tranzit daşımaların həcmi "
+                f"{sentence['value']} "
+            )
+            after_change = " min ton təşkil etmişdir:"
+
+    _add_docx_paragraph_with_change(
+        document,
+        before_change,
+        sentence["change"],
+        sentence["direction"],
+        after_change,
+        bold=True,
+    )
+
+
 def build_transit_dynamics_report_docx(report_context):
+    text = report_context.get("text", TRANSIT_DYNAMICS_REPORT_TEXTS["az"])
     document = Document()
     section = document.sections[0]
     section.top_margin = Inches(0.6)
@@ -1437,59 +1967,43 @@ def build_transit_dynamics_report_docx(report_context):
 
     _add_docx_paragraph(
         document,
-        f"Hesabat nömrəsi: {report_context['report_number']}",
+        f"{text['report_number_label']}: {report_context['report_number']}",
         bold=True,
         size=10,
         space_after=18,
     )
     _add_docx_paragraph(
         document,
-        "Azərbaycan Üzərindən Tranzit Rejimdə Daşınmış Yüklərin Dinamika Hesabatı",
+        text["title"],
         bold=True,
         size=16,
         alignment=WD_ALIGN_PARAGRAPH.CENTER,
         space_after=28,
     )
 
-    annual_year = report_context["annual_years"]["current"]
-    partial_label = report_context["partial_years"]["label"]
     transport = report_context["transport"]
     _add_docx_paragraph(
         document,
-        f"1. Nəqliyyat növü üzrə tranzit daşımalar, {report_context['unit']}",
+        f"{text['sections']['transport']['title']}, {report_context['unit']}",
         bold=True,
         size=14,
         space_after=10,
     )
-    _add_docx_paragraph_with_change(
-        document,
-        f"{annual_year}-ci ildə tranzit daşımaların həcmi {transport['annual_sentence']['value']} ",
-        transport["annual_sentence"]["change"],
-        transport["annual_sentence"]["direction"],
-        " min ton təşkil etmişdir.",
-        bold=True,
-    )
+    _add_transit_docx_summary(document, report_context, period="annual")
     for item in transport["bullets_annual"]:
         _add_docx_paragraph_with_change(
             document,
-            f"{item.get('narrative_label', transport_narrative_label(item['label']))}: {item['value']} min ton ",
+            f"{item.get('narrative_label', item['label'])}: {item['value']} {text['value_suffix']} ",
             item["change"],
             item["direction"],
             space_after=2,
             list_style=document.styles["List Bullet"],
         )
-    _add_docx_paragraph_with_change(
-        document,
-        f"{partial_label} tranzit daşımaların həcmi {transport['partial_sentence']['value']} ",
-        transport["partial_sentence"]["change"],
-        transport["partial_sentence"]["direction"],
-        " min ton təşkil etmişdir:",
-        bold=True,
-    )
+    _add_transit_docx_summary(document, report_context, period="partial")
     for item in transport["bullets_partial"]:
         _add_docx_paragraph_with_change(
             document,
-            f"{item.get('narrative_label', transport_narrative_label(item['label']))}: {item['value']} min ton ",
+            f"{item.get('narrative_label', item['label'])}: {item['value']} {text['value_suffix']} ",
             item["change"],
             item["direction"],
             space_after=2,
@@ -1504,26 +2018,26 @@ def build_transit_dynamics_report_docx(report_context):
     ]
     _add_report_docx_table(
         document,
-        ["Nəqliyyat növü", *period_headers, "Dinamika"],
+        [text["sections"]["transport"]["column"], *period_headers, text["dynamic"]],
         transport["rows"],
         total_row=transport["total"],
     )
 
     report_sections = [
-        ("2. Əsas dəhlizlər üzrə tranzit daşımalar", "Dəhliz", report_context["corridors"]["rows"]),
-        ("3. Əsas məhsullar üzrə tranzit daşımalar", "Məhsul adı (qısaldılmış)", report_context["products"]["rows"]),
-        ("4. Göndərən ölkələr üzrə tranzit daşımalar", "Göndərən ölkə", report_context["sender_countries"]["rows"]),
-        ("5. Təyinat ölkələr üzrə tranzit daşımalar", "Təyinat ölkə", report_context["destination_countries"]["rows"]),
+        (text["sections"]["corridors"], report_context["corridors"]["rows"]),
+        (text["sections"]["products"], report_context["products"]["rows"]),
+        (text["sections"]["sender_countries"], report_context["sender_countries"]["rows"]),
+        (text["sections"]["destination_countries"], report_context["destination_countries"]["rows"]),
     ]
-    for heading, first_column, rows in report_sections:
+    for section_text, rows in report_sections:
         _add_docx_paragraph(
             document,
-            f"{heading}, {report_context['unit']}",
+            f"{section_text['title']}, {report_context['unit']}",
             bold=True,
             size=14,
             space_after=10,
         )
-        _add_report_docx_table(document, [first_column, *period_headers, "Dinamika"], rows)
+        _add_report_docx_table(document, [section_text["column"], *period_headers, text["dynamic"]], rows)
 
     output = BytesIO()
     document.save(output)

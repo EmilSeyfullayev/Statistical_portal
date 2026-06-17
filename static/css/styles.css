@@ -140,11 +140,156 @@ button.primary,
     width: 100%;
 }
 
+.transit-download-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    min-width: min(100%, 560px);
+}
+
+.transit-download-grid .button {
+    align-items: center;
+    display: flex;
+    justify-content: center;
+    min-height: 44px;
+    padding: 10px 12px;
+}
+
 .hero-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 12px;
     margin-top: 20px;
+}
+
+.report-filter {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 18px;
+}
+
+.report-filter label {
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 400;
+    text-transform: uppercase;
+}
+
+.report-filter select {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--ink);
+    font: inherit;
+    min-height: 40px;
+    padding: 8px 12px;
+}
+
+.report-filter select[name="country"] {
+    min-width: 220px;
+}
+
+.country-filter-form {
+    align-items: flex-end;
+}
+
+.country-combobox {
+    position: relative;
+}
+
+.country-combobox label {
+    display: block;
+    margin-bottom: 6px;
+}
+
+.country-combobox-input {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--ink);
+    font: inherit;
+    min-height: 40px;
+    min-width: 260px;
+    padding: 8px 12px;
+    width: 100%;
+}
+
+.country-combobox-input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+    outline: none;
+}
+
+.country-combobox-options {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+    left: 0;
+    margin-top: 6px;
+    max-height: 260px;
+    min-width: min(360px, 86vw);
+    overflow-y: auto;
+    padding: 6px;
+    position: absolute;
+    top: 100%;
+    z-index: 20;
+}
+
+.country-combobox-option {
+    background: transparent;
+    border: 0;
+    border-radius: 8px;
+    color: var(--ink);
+    cursor: pointer;
+    display: block;
+    font: inherit;
+    padding: 9px 10px;
+    text-align: left;
+    width: 100%;
+}
+
+.country-combobox-option:hover,
+.country-combobox-option.active {
+    background: #eef4ff;
+    color: var(--primary);
+}
+
+.country-combobox-option[hidden] {
+    display: none;
+}
+
+.country-combobox-empty {
+    color: var(--muted);
+    padding: 10px;
+}
+
+.country-submit-button {
+    min-height: 40px;
+    padding: 8px 16px;
+}
+
+.language-switcher {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 18px;
+}
+
+.language-button {
+    border-radius: 999px;
+    padding: 8px 14px;
+}
+
+.language-button.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+}
+
+.language-panel[hidden] {
+    display: none;
 }
 
 .statistics-filter {
