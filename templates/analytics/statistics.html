@@ -53,7 +53,7 @@
 <section class="panel">
     <h2>Recent interactions</h2>
     <table>
-        <thead><tr><th>Time</th><th>User</th><th>Event</th><th>Module</th><th>Submodule</th><th>Report</th><th>Language</th><th>Format</th><th>Number</th><th>Month</th><th>Country</th></tr></thead>
+        <thead><tr><th>Time</th><th>User</th><th>Event</th><th>Module</th><th>Submodule</th><th>Report</th><th>Language</th><th>Format</th><th>Number</th><th>Month</th><th>Country</th><th>Corridor</th></tr></thead>
         <tbody>
             {% for event in recent_events %}
                 <tr>
@@ -68,9 +68,10 @@
                     <td>{{ event.display_report_number }}</td>
                     <td>{{ event.display_month }}</td>
                     <td>{{ event.display_country }}</td>
+                    <td>{{ event.display_corridor }}</td>
                 </tr>
             {% empty %}
-                <tr><td colspan="11">No interactions yet.</td></tr>
+                <tr><td colspan="12">No interactions yet.</td></tr>
             {% endfor %}
         </tbody>
     </table>
@@ -79,7 +80,7 @@
 <section class="panel">
     <h2>Recent downloads</h2>
     <table>
-        <thead><tr><th>Time</th><th>User</th><th>Report</th><th>Language</th><th>Format</th><th>Number</th><th>Month</th><th>Country</th><th>File</th></tr></thead>
+        <thead><tr><th>Time</th><th>User</th><th>Report</th><th>Language</th><th>Format</th><th>Number</th><th>Month</th><th>Country</th><th>Corridor</th><th>File</th></tr></thead>
         <tbody>
             {% for download in recent_downloads %}
                 <tr>
@@ -91,10 +92,11 @@
                     <td>{{ download.display_report_number }}</td>
                     <td>{{ download.display_month }}</td>
                     <td>{{ download.display_country }}</td>
+                    <td>{{ download.display_corridor }}</td>
                     <td>{{ download.generated_file_path|default:"-" }}</td>
                 </tr>
             {% empty %}
-                <tr><td colspan="9">No downloads yet.</td></tr>
+                <tr><td colspan="10">No downloads yet.</td></tr>
             {% endfor %}
         </tbody>
     </table>

@@ -16,9 +16,12 @@
     <div class="card-grid">
         {% for submodule in module.submodules.all %}
             {% if submodule.is_active %}
-                <a class="card" href="{{ submodule.get_absolute_url }}">
+                <a class="card{% if module.slug == "tranzit-daşımalar" and submodule.name in "Blok qatarlar,Gəlirlər,Qonşu ölkələrlə yük dövriyyəsi, rejimlər üzrə" %} empty-submodule-card{% endif %}" href="{{ submodule.get_absolute_url }}">
                     <span class="card-kicker">Submodule</span>
                     <h3>{{ submodule.name }}</h3>
+                    {% if module.slug == "tranzit-daşımalar" and submodule.name in "Blok qatarlar,Gəlirlər,Qonşu ölkələrlə yük dövriyyəsi, rejimlər üzrə" %}
+                        <p>Hazırlanır</p>
+                    {% endif %}
                 </a>
             {% endif %}
         {% endfor %}

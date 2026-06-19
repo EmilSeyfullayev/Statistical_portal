@@ -73,6 +73,7 @@ class Command(BaseCommand):
             )
 
         transit_submodule = submodules_by_name["Tranzit"]
+        foreign_trucks_submodule = submodules_by_name["Xarici TIR-lar"]
         DataSource.objects.update_or_create(
             submodule=transit_submodule,
             name="Transit Excel source",
@@ -81,6 +82,17 @@ class Command(BaseCommand):
                 "destination_subdir": "transit",
                 "parser_key": "transit_excel_v1",
                 "target_model_key": "transit_record",
+                "duplicate_strategy": "prevent",
+                "is_active": True,
+            },
+        )
+        DataSource.objects.update_or_create(
+            submodule=foreign_trucks_submodule,
+            name="Foreign Trucks Excel source",
+            defaults={
+                "source_type": DataSource.SOURCE_LOCAL,
+                "destination_subdir": "foreign_trucks",
+                "parser_key": "foreign_trucks_excel_v1",
                 "duplicate_strategy": "prevent",
                 "is_active": True,
             },

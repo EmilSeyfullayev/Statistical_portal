@@ -20,9 +20,12 @@
                     {% if transit_country_selected %}
                         <input type="hidden" name="country" value="{{ transit_country_selected }}">
                     {% endif %}
+                    {% if transit_corridor_selected %}
+                        <input type="hidden" name="corridor" value="{{ transit_corridor_selected }}">
+                    {% endif %}
                 </form>
             {% endif %}
-            <div class="language-switcher" aria-label="Report language" role="tablist" data-module-slug="{{ submodule.module.slug }}" data-submodule-slug="{{ submodule.slug }}" data-report-name="{{ transit_dynamics_report.text.title|default:submodule.name }}" data-report-number="{{ transit_dynamics_report.report_number|default:'' }}" data-selected-month="{{ transit_dynamics_selected_month|default:'' }}" data-selected-country="{{ transit_country_selected|default:'' }}" data-track-url="{% url 'analytics:track_report_language' %}">
+            <div class="language-switcher" aria-label="Report language" role="tablist" data-module-slug="{{ submodule.module.slug }}" data-submodule-slug="{{ submodule.slug }}" data-report-name="{{ transit_dynamics_report.text.title|default:submodule.name }}" data-report-number="{{ transit_dynamics_report.report_number|default:'' }}" data-selected-month="{{ transit_dynamics_selected_month|default:'' }}" data-selected-country="{{ transit_country_selected|default:'' }}" data-selected-corridor="{{ transit_corridor_selected|default:'' }}" data-track-url="{% url 'analytics:track_report_language' %}">
                 {% for option in transit_dynamics_language_options %}
                     <button class="button language-button{% if option.code == "az" %} active{% endif %}" type="button" role="tab" aria-selected="{% if option.code == "az" %}true{% else %}false{% endif %}" data-language-tab="{{ option.code }}">{{ option.label }}</button>
                 {% endfor %}
@@ -44,6 +47,18 @@
                     <button class="button primary country-submit-button" type="submit">Davam et</button>
                 </form>
             {% endif %}
+            {% if transit_corridor_options %}
+                <form class="report-filter corridor-filter-form" method="get">
+                    <input type="hidden" name="month" value="{{ transit_dynamics_selected_month }}">
+                    <label for="transit-report-corridor">Seçilmiş dəhliz</label>
+                    <select id="transit-report-corridor" name="corridor">
+                        {% for corridor in transit_corridor_options %}
+                            <option value="{{ corridor.value }}" {% if corridor.selected %}selected{% endif %}>{{ corridor.value }}</option>
+                        {% endfor %}
+                    </select>
+                    <button class="button primary country-submit-button" type="submit">Davam et</button>
+                </form>
+            {% endif %}
         {% elif transit_dynamics_report %}
             <p>Tranzit daşımaların əsas dinamika göstəriciləri.</p>
         {% else %}
@@ -52,12 +67,12 @@
     </div>
     {% if transit_dynamics_report and transit_dynamics_report.available %}
         <div class="hero-downloads transit-download-grid">
-            <a class="button word-button" href="{{ request.path }}?download=docx&lang=az&month={{ transit_dynamics_selected_month }}{% if transit_country_selected %}&country={{ transit_country_selected|urlencode }}{% endif %}">Word hesabatı yüklə</a>
-            <a class="button word-button" href="{{ request.path }}?download=docx&lang=en&month={{ transit_dynamics_selected_month }}{% if transit_country_selected %}&country={{ transit_country_selected|urlencode }}{% endif %}">Download Word report</a>
-            <a class="button word-button" href="{{ request.path }}?download=docx&lang=ru&month={{ transit_dynamics_selected_month }}{% if transit_country_selected %}&country={{ transit_country_selected|urlencode }}{% endif %}">Скачать Word отчет</a>
-            <a class="button pdf-button" href="{{ request.path }}?download=pdf&lang=az&month={{ transit_dynamics_selected_month }}{% if transit_country_selected %}&country={{ transit_country_selected|urlencode }}{% endif %}">PDF hesabatı yüklə</a>
-            <a class="button pdf-button" href="{{ request.path }}?download=pdf&lang=en&month={{ transit_dynamics_selected_month }}{% if transit_country_selected %}&country={{ transit_country_selected|urlencode }}{% endif %}">Download PDF report</a>
-            <a class="button pdf-button" href="{{ request.path }}?download=pdf&lang=ru&month={{ transit_dynamics_selected_month }}{% if transit_country_selected %}&country={{ transit_country_selected|urlencode }}{% endif %}">Скачать PDF отчет</a>
+            <a class="button word-button" href="{{ request.path }}?download=docx&lang=az&month={{ transit_dynamics_selected_month }}{% if transit_country_selected %}&country={{ transit_country_selected|urlencode }}{% endif %}{% if transit_corridor_selected %}&corridor={{ transit_corridor_selected|urlencode }}{% endif %}">Word hesabatı yüklə</a>
+            <a class="button word-button" href="{{ request.path }}?download=docx&lang=en&month={{ transit_dynamics_selected_month }}{% if transit_country_selected %}&country={{ transit_country_selected|urlencode }}{% endif %}{% if transit_corridor_selected %}&corridor={{ transit_corridor_selected|urlencode }}{% endif %}">Download Word report</a>
+            <a class="button word-button" href="{{ request.path }}?download=docx&lang=ru&month={{ transit_dynamics_selected_month }}{% if transit_country_selected %}&country={{ transit_country_selected|urlencode }}{% endif %}{% if transit_corridor_selected %}&corridor={{ transit_corridor_selected|urlencode }}{% endif %}">Скачать Word отчет</a>
+            <a class="button pdf-button" href="{{ request.path }}?download=pdf&lang=az&month={{ transit_dynamics_selected_month }}{% if transit_country_selected %}&country={{ transit_country_selected|urlencode }}{% endif %}{% if transit_corridor_selected %}&corridor={{ transit_corridor_selected|urlencode }}{% endif %}">PDF hesabatı yüklə</a>
+            <a class="button pdf-button" href="{{ request.path }}?download=pdf&lang=en&month={{ transit_dynamics_selected_month }}{% if transit_country_selected %}&country={{ transit_country_selected|urlencode }}{% endif %}{% if transit_corridor_selected %}&corridor={{ transit_corridor_selected|urlencode }}{% endif %}">Download PDF report</a>
+            <a class="button pdf-button" href="{{ request.path }}?download=pdf&lang=ru&month={{ transit_dynamics_selected_month }}{% if transit_country_selected %}&country={{ transit_country_selected|urlencode }}{% endif %}{% if transit_corridor_selected %}&corridor={{ transit_corridor_selected|urlencode }}{% endif %}">Скачать PDF отчет</a>
         </div>
     {% endif %}
 </section>
@@ -93,6 +108,20 @@
                     <span>{{ field.label }}</span>
                     {% if field.type == "date" %}
                         <input type="date" name="{{ field.name }}" value="{{ field.value }}">
+                    {% elif field.type == "text" %}
+                        <input type="text" name="{{ field.name }}" value="{{ field.value }}">
+                    {% elif field.type == "combobox" %}
+                        <div class="filter-combobox" data-filter-combobox>
+                            <input class="filter-combobox-input" type="search" value="{{ field.value|default:'Hamısı' }}" autocomplete="off" aria-autocomplete="list" aria-expanded="false" data-filter-combobox-input>
+                            <input type="hidden" name="{{ field.name }}" value="{{ field.value }}" data-filter-combobox-value>
+                            <div class="filter-combobox-options" role="listbox" hidden data-filter-combobox-options>
+                                <button class="filter-combobox-option{% if not field.value %} active{% endif %}" type="button" role="option" data-filter-combobox-option="">Hamısı</button>
+                                {% for value in field.options %}
+                                    <button class="filter-combobox-option{% if field.value == value %} active{% endif %}" type="button" role="option" data-filter-combobox-option="{{ value }}">{{ value }}</button>
+                                {% endfor %}
+                                <div class="filter-combobox-empty" hidden data-filter-combobox-empty>Nəticə tapılmadı</div>
+                            </div>
+                        </div>
                     {% else %}
                         <select name="{{ field.name }}">
                             <option value="">Hamısı</option>
@@ -192,6 +221,79 @@
 
 {% block scripts %}
 {{ block.super }}
+
+{% if transit_data %}
+<script>
+(function () {
+    const comboboxes = document.querySelectorAll('[data-filter-combobox]');
+
+    comboboxes.forEach((combobox) => {
+        const input = combobox.querySelector('[data-filter-combobox-input]');
+        const hiddenValue = combobox.querySelector('[data-filter-combobox-value]');
+        const optionsPanel = combobox.querySelector('[data-filter-combobox-options]');
+        const empty = combobox.querySelector('[data-filter-combobox-empty]');
+        const options = Array.from(combobox.querySelectorAll('[data-filter-combobox-option]'));
+
+        const setPanelOpen = (isOpen) => {
+            optionsPanel.hidden = !isOpen;
+            input.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        };
+
+        const filterOptions = () => {
+            const query = input.value.trim().toLocaleLowerCase('az');
+            let visibleCount = 0;
+            options.forEach((option) => {
+                const value = option.dataset.filterComboboxOption || '';
+                const label = option.textContent.trim();
+                const isDefault = value === '';
+                const isVisible = isDefault || !query || label.toLocaleLowerCase('az').includes(query);
+                option.hidden = !isVisible;
+                if (isVisible && !isDefault) {
+                    visibleCount += 1;
+                }
+            });
+            empty.hidden = visibleCount > 0;
+        };
+
+        const chooseOption = (option) => {
+            const value = option.dataset.filterComboboxOption || '';
+            hiddenValue.value = value;
+            input.value = value || 'Hamısı';
+            options.forEach((item) => item.classList.toggle('active', item === option));
+            setPanelOpen(false);
+        };
+
+        input.addEventListener('focus', () => {
+            if (hiddenValue.value === '' && input.value === 'Hamısı') {
+                input.value = '';
+            }
+            filterOptions();
+            setPanelOpen(true);
+        });
+
+        input.addEventListener('input', () => {
+            hiddenValue.value = '';
+            filterOptions();
+            setPanelOpen(true);
+        });
+
+        input.addEventListener('blur', () => {
+            window.setTimeout(() => {
+                if (!hiddenValue.value && !input.value.trim()) {
+                    input.value = 'Hamısı';
+                }
+                setPanelOpen(false);
+            }, 120);
+        });
+
+        options.forEach((option) => {
+            option.addEventListener('mousedown', (event) => event.preventDefault());
+            option.addEventListener('click', () => chooseOption(option));
+        });
+    });
+}());
+</script>
+{% endif %}
 {% if transit_dynamics_language_options %}
 <script>
 (function () {
@@ -223,6 +325,7 @@
                 payload.append('report_number', switcher.dataset.reportNumber || '');
                 payload.append('month', switcher.dataset.selectedMonth || '');
                 payload.append('country', switcher.dataset.selectedCountry || '');
+                payload.append('corridor', switcher.dataset.selectedCorridor || '');
                 payload.append('language', language);
                 payload.append('target_url', window.location.pathname + window.location.search);
                 fetch(switcher.dataset.trackUrl, {

@@ -55,6 +55,7 @@ def track_report_language(request):
             "language": language,
             "month": request.POST.get("month", ""),
             "country": request.POST.get("country", ""),
+            "corridor": request.POST.get("corridor", ""),
         },
     )
     return JsonResponse({"ok": True})
@@ -83,6 +84,7 @@ def statistics(request):
         event.display_report_number = metadata_value(event.request_metadata, "report_number")
         event.display_month = metadata_value(event.request_metadata, "month")
         event.display_country = metadata_value(event.request_metadata, "country")
+        event.display_corridor = metadata_value(event.request_metadata, "corridor")
     recent_downloads = list(downloads[:50])
     for download in recent_downloads:
         download.display_user_name = display_user_name(download.user)
@@ -93,6 +95,7 @@ def statistics(request):
         download.display_report_number = metadata_value(download.request_metadata, "report_number")
         download.display_month = metadata_value(download.request_metadata, "month")
         download.display_country = metadata_value(download.request_metadata, "country")
+        download.display_corridor = metadata_value(download.request_metadata, "corridor")
     download_counter = Counter()
     for download in downloads:
         report_name = download.report.name if download.report else download.request_metadata.get("report_name", "-")

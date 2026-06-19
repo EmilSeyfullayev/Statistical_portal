@@ -10,7 +10,11 @@ from apps.catalog.models import DashboardDefinition, Module, Submodule
 from apps.dashboard.services import (
     build_transit_dynamics_report_docx,
     build_transit_dynamics_report_pdf,
+    get_foreign_trucks_context,
+    get_foreign_trucks_download_rows,
     get_transit_download_rows,
+    get_transit_corridor_report_context,
+    get_transit_corridor_report_contexts,
     get_transit_country_report_context,
     get_transit_country_report_contexts,
     get_transit_dashboard_context,
@@ -19,6 +23,8 @@ from apps.dashboard.services import (
     get_transit_merged_context,
     get_transit_portal_context,
     get_transit_portal_download_rows,
+    get_transit_posts_report_context,
+    get_transit_posts_report_contexts,
 )
 from apps.reports.models import ReportDownload
 
@@ -70,6 +76,7 @@ def record_transit_dynamics_download(request, submodule, report_context, report_
         "language": report_context.get("language", "az"),
         "month": report_context.get("selected_month", ""),
         "country": report_context.get("selected_country", ""),
+        "corridor": report_context.get("selected_corridor", ""),
     }
     record_interaction(
         request,
@@ -138,6 +145,13 @@ def submodule_detail(request, module_slug, submodule_slug):
             "download_loader": get_transit_download_rows,
             "sheet_title": "Transit",
             "filename": "transit_merged.xlsx",
+        }
+    elif submodule.module.slug == "datalar" and submodule.slug == "xarici-tir-lar":
+        transit_table = {
+            "context_loader": get_foreign_trucks_context,
+            "download_loader": get_foreign_trucks_download_rows,
+            "sheet_title": "Foreign Trucks",
+            "filename": "foreign_trucks.xlsx",
         }
     elif submodule.module.slug == "processed-data" and submodule.slug == "transit":
         transit_table = {
@@ -252,6 +266,94 @@ def submodule_detail(request, module_slug, submodule_slug):
                 )
         context["transit_dynamics_report"] = country_report
         context["transit_dynamics_reports"] = country_reports
+    elif submodule.module.slug == "tranzit-daşımalar" and submodule.slug == "dəhlizlər-üzrə-arayış":
+        context["transit_dynamics_language_options"] = TRANSIT_DYNAMICS_LANGUAGE_OPTIONS
+        selected_month = selected_report_month(request)
+        selected_corridor = request.GET.get("corridor") or None
+        corridor_report = get_transit_corridor_report_context(
+            selected_month=selected_month,
+            selected_corridor=selected_corridor,
+        )
+        corridor_reports = get_transit_corridor_report_contexts(corridor_report)
+        reports_by_language = {report["language"]: report for report in corridor_reports}
+
+        if corridor_report.get("available"):
+            selected_month = corridor_report["selected_month"]
+            selected_corridor = corridor_report["selected_corridor"]
+            context["transit_dynamics_selected_month"] = selected_month
+            context["transit_dynamics_month_options"] = month_options(corridor_report["max_month"], selected_month)
+            context["transit_corridor_selected"] = selected_corridor
+            context["transit_corridor_options"] = [
+                {"value": corridor, "selected": corridor == selected_corridor}
+                for corridor in corridor_report["corridor_options"]
+            ]
+            language = request.GET.get("lang", "az")
+            if language not in reports_by_language:
+                language = "az"
+            download_report = reports_by_language[language]
+            filename_base = corridor_report["report_number"].replace("/", "-")
+            language_suffix = TRANSIT_DYNAMICS_LANGUAGE_SUFFIXES[language]
+            if request.GET.get("download") == "docx":
+                output = build_transit_dynamics_report_docx(download_report)
+                filename = f"{filename_base}-{language_suffix}.docx"
+                record_transit_dynamics_download(request, submodule, download_report, "docx", filename)
+                return FileResponse(
+                    output,
+                    as_attachment=True,
+                    filename=filename,
+                    content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            if request.GET.get("download") == "pdf":
+                output = build_transit_dynamics_report_pdf(download_report)
+                filename = f"{filename_base}-{language_suffix}.pdf"
+                record_transit_dynamics_download(request, submodule, download_report, "pdf", filename)
+                return FileResponse(
+                    output,
+                    as_attachment=True,
+                    filename=filename,
+                    content_type="application/pdf",
+                )
+        context["transit_dynamics_report"] = corridor_report
+        context["transit_dynamics_reports"] = corridor_reports
+    elif submodule.module.slug == "tranzit-daşımalar" and submodule.slug == "postlar-üzrə-arayış":
+        context["transit_dynamics_language_options"] = TRANSIT_DYNAMICS_LANGUAGE_OPTIONS
+        selected_month = selected_report_month(request)
+        posts_report = get_transit_posts_report_context(selected_month=selected_month)
+        posts_reports = get_transit_posts_report_contexts(posts_report)
+        reports_by_language = {report["language"]: report for report in posts_reports}
+
+        if posts_report.get("available"):
+            selected_month = posts_report["selected_month"]
+            context["transit_dynamics_selected_month"] = selected_month
+            context["transit_dynamics_month_options"] = month_options(posts_report["max_month"], selected_month)
+            language = request.GET.get("lang", "az")
+            if language not in reports_by_language:
+                language = "az"
+            download_report = reports_by_language[language]
+            filename_base = posts_report["report_number"].replace("/", "-")
+            language_suffix = TRANSIT_DYNAMICS_LANGUAGE_SUFFIXES[language]
+            if request.GET.get("download") == "docx":
+                output = build_transit_dynamics_report_docx(download_report)
+                filename = f"{filename_base}-{language_suffix}.docx"
+                record_transit_dynamics_download(request, submodule, download_report, "docx", filename)
+                return FileResponse(
+                    output,
+                    as_attachment=True,
+                    filename=filename,
+                    content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            if request.GET.get("download") == "pdf":
+                output = build_transit_dynamics_report_pdf(download_report)
+                filename = f"{filename_base}-{language_suffix}.pdf"
+                record_transit_dynamics_download(request, submodule, download_report, "pdf", filename)
+                return FileResponse(
+                    output,
+                    as_attachment=True,
+                    filename=filename,
+                    content_type="application/pdf",
+                )
+        context["transit_dynamics_report"] = posts_reports[0] if posts_reports else posts_report
+        context["transit_dynamics_reports"] = posts_reports
     return render(request, "dashboard/submodule_detail.html", context)
 
 # Create your views here.

@@ -231,12 +231,93 @@ TRANSIT_CORRIDOR_TRANSLATIONS = {
     "Şimal-Şərq": {"en": "North-East", "ru": "Северо-Восток"},
 }
 
+TRANSIT_DIRECTION_TRANSLATIONS = {
+    "Cənub": {"en": "South", "ru": "Юг"},
+    "Digər": {"en": "Other", "ru": "Другое"},
+    "Qərb": {"en": "West", "ru": "Запад"},
+    "Şərq": {"en": "East", "ru": "Восток"},
+    "Şimal": {"en": "North", "ru": "Север"},
+}
+
+TRANSIT_DIRECTIONAL_CORRIDOR_TRANSLATIONS = {
+    f"{start}-{end}": {
+        "en": f"{start_translations['en']}-{end_translations['en']}",
+        "ru": f"{start_translations['ru']}-{end_translations['ru']}",
+    }
+    for start, start_translations in TRANSIT_DIRECTION_TRANSLATIONS.items()
+    for end, end_translations in TRANSIT_DIRECTION_TRANSLATIONS.items()
+}
+
 TRANSIT_TRANSPORT_TYPE_TRANSLATIONS = {
     "Avtomobil": {"en": "Road", "ru": "Автомобильный"},
     "Boru": {"en": "Pipeline", "ru": "Трубопроводный"},
     "Dəmiryolu": {"en": "Railway", "ru": "Железнодорожный"},
     "Dəniz": {"en": "Sea", "ru": "Морской"},
     "Hava": {"en": "Air", "ru": "Воздушный"},
+}
+
+TRANSIT_POST_TRANSLATION_ROWS = [
+    ("Abşeron Gömrük Postu", "Absheron Customs Post", "Таможенный пост Абшерон"),
+    ("Aksizli mallar üzrə BGİ", "Main Customs Department for Excisable Goods", "Главное таможенное управление по акцизным товарам"),
+    ("Astara dəmir yolu GNZ", "Astara Railway Customs Control Zone", "Железнодорожная зона таможенного контроля Астара"),
+    ("Astara Dəmiryolu g/p", "Astara Railway Customs Post", "Железнодорожный таможенный пост Астара"),
+    ("Astara G/İ", "Astara Customs Department", "Таможенное управление Астара"),
+    ("Astara g/p", "Astara Customs Post", "Таможенный пост Астара"),
+    ("Astara Keçid məntəqəsi", "Astara Border Crossing Point", "Пункт пропуска Астара"),
+    ("Astara modul tipli g/p", "Astara Modular Customs Post", "Модульный таможенный пост Астара"),
+    ("Azad və XIZ üzrə Gömrük İdarəsi", "Customs Department for Free and Special Economic Zones", "Таможенное управление по свободным и специальным экономическим зонам"),
+    ("Azərterminalkompleks", "Azerterminalcomplex", "Азертерминалкомплекс"),
+    ("Baki  Beynalxalq Dəniz Limani", "Baku International Sea Port", "Бакинский международный морской порт"),
+    ("Bakı BGİ", "Baku Main Customs Department", "Главное таможенное управление Баку"),
+    ("Beynəlxalq Dəniz Ticarət Limanı g/p", "International Sea Trade Port Customs Post", "Таможенный пост Международного морского торгового порта"),
+    ("Biləsuvar G/İ", "Bilasuvar Customs Department", "Таможенное управление Билясувар"),
+    ("Biləsuvar g/p", "Bilasuvar Customs Post", "Таможенный пост Билясувар"),
+    ("Biləsuvar Keçid məntəqəsi", "Bilasuvar Border Crossing Point", "Пункт пропуска Билясувар"),
+    ("Böyük kəsik g/p", "Boyuk Kasik Customs Post", "Таможенный пост Беюк Кясик"),
+    ("Cənub-Astara g/p", "South-Astara Customs Post", "Таможенный пост Дженуб-Астара"),
+    ("Cənub Ərazi BG/İ", "Southern Territorial Main Customs Department", "Южное территориальное главное таможенное управление"),
+    ("Culfa g/p", "Julfa Customs Post", "Таможенный пост Джульфа"),
+    ("Dəniz nəqliyyatı və Enerji resursları Baş Gömrük İdarəsi", "Main Customs Department for Maritime Transport and Energy Resources", "Главное таможенное управление морского транспорта и энергетических ресурсов"),
+    ("DGK", "State Customs Committee", "Государственный таможенный комитет"),
+    ("Dübəndi g/p", "Dubandi Customs Post", "Таможенный пост Дюбенди"),
+    ("Eyvazlı  gömrük postu", "Eyvazli Customs Post", "Таможенный пост Эйвазлы"),
+    ("Gəncə G/İ", "Ganja Customs Department", "Таможенное управление Гянджа"),
+    ("HNBGİ", "Air Transport Main Customs Department", "Главное таможенное управление воздушного транспорта"),
+    ("Hövsan Dəniz g/p", "Hovsan Sea Customs Post", "Морской таможенный пост Говсан"),
+    ("İpək Yolu g/p", "Silk Road Customs Post", "Таможенный пост Ипек йолу"),
+    ("Lənkəran Dəniz  g/p", "Lankaran Sea Customs Post", "Морской таможенный пост Лянкяран"),
+    ("Lənkəran Hava Limanı g/p", "Lankaran Airport Customs Post", "Таможенный пост аэропорта Лянкяран"),
+    ("Liman g/p", "Liman Customs Post", "Таможенный пост Лиман"),
+    ('"Logistika Mərkəzi" gömrük postu', "Logistics Center Customs Post", "Таможенный пост Логистика Меркези"),
+    ("Mazımqara g/p", "Mazimgara Customs Post", "Таможенный пост Мазымгара"),
+    ("Naxçıvan BGİ", "Nakhchivan Main Customs Department", "Главное таможенное управление Нахчыван"),
+    ("Naxçıvan hava limanı g/p", "Nakhchivan Airport Customs Post", "Таможенный пост аэропорта Нахчыван"),
+    ("Poçt göndərişləri g/p", "Postal Shipments Customs Post", "Таможенный пост почтовых отправлений"),
+    ("Qərb Ərazi BGİ", "Western Territorial Main Customs Department", "Западное территориальное главное таможенное управление"),
+    ("Qırmızı körpü g/p", "Red Bridge Customs Post", "Таможенный пост Красный мост"),
+    ("Qoşa təpə  g/p", "Gosha Tapa Customs Post", "Таможенный пост Гоша тепе"),
+    ("Sadıxlı g/p", "Sadikhli Customs Post", "Таможенный пост Садыхлы"),
+    ("Şahtaxtı G/İ", "Shahtakhti Customs Department", "Таможенное управление Шахтахты"),
+    ("Şahtaxtı g/p", "Shahtakhti Customs Post", "Таможенный пост Шахтахты"),
+    ("Samur g/p", "Samur Customs Post", "Таможенный пост Самур"),
+    ("Sədərək G/İ", "Sadarak Customs Department", "Таможенное управление Садарак"),
+    ("Sədərək g/p", "Sadarak Customs Post", "Таможенный пост Садарак"),
+    ("Şəki Gömrük Postu", "Shaki Customs Post", "Таможенный пост Шеки"),
+    ("Şirvanlı g/p", "Shirvanli Customs Post", "Таможенный пост Ширванлы"),
+    ("Terminal-1 Beynəlxalq Hava Liman g/p", "Terminal 1 International Airport Customs Post", "Таможенный пост Терминал-1 международного аэропорта"),
+    ("Tovuz G/İ", "Tovuz Customs Department", "Таможенное управление Товуз"),
+    ("Xaçmaz Gömrük İdarəsi", "Khachmaz Customs Department", "Таможенное управление Хачмаз"),
+    ("Xanoba g/p", "Khanoba Customs Post", "Таможенный пост Ханоба"),
+    ("Xudat  g/p", "Khudat Customs Post", "Таможенный пост Худат"),
+    ("Yalama g/p", "Yalama Customs Post", "Таможенный пост Ялама"),
+    ("Yeni Sanqaçal g/p", "Yeni Sangachal Customs Post", "Таможенный пост Ени Сангачал"),
+    ("Yevlax Gömrük Postu", "Yevlakh Customs Post", "Таможенный пост Евлах"),
+    ("Zirə Dəniz g/p", "Zira Sea Customs Post", "Морской таможенный пост Зире"),
+]
+
+TRANSIT_POST_TRANSLATIONS = {
+    az: {"en": en, "ru": ru}
+    for az, en, ru in TRANSIT_POST_TRANSLATION_ROWS
 }
 
 TRANSIT_COUNTRY_TRANSLATIONS = {
@@ -248,6 +329,9 @@ TRANSIT_VALUE_TRANSLATIONS = {
     "Göndərən ölkə": TRANSIT_COUNTRY_TRANSLATIONS,
     "Təyinat ölkə": TRANSIT_COUNTRY_TRANSLATIONS,
     "Dəhliz": TRANSIT_CORRIDOR_TRANSLATIONS,
+    "Dəhliz (istiqamətlə)": TRANSIT_DIRECTIONAL_CORRIDOR_TRANSLATIONS,
+    "Gömrük giriş postu": TRANSIT_POST_TRANSLATIONS,
+    "Gömrük çıxış postu": TRANSIT_POST_TRANSLATIONS,
     "Nəqliyyat növü": TRANSIT_TRANSPORT_TYPE_TRANSLATIONS,
 }
 

@@ -1,7 +1,9 @@
+from apps.imports.handlers.foreign_trucks import ForeignTrucksExcelImporter
 from apps.imports.handlers.transit import TransitExcelImporter
 
 
 IMPORTERS = {
+    ForeignTrucksExcelImporter.parser_key: ForeignTrucksExcelImporter,
     TransitExcelImporter.parser_key: TransitExcelImporter,
 }
 

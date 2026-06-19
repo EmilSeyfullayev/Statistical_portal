@@ -161,6 +161,67 @@ DASHBOARD_DEFAULT_TRANSPORTS = ["Avtomobil", "Dəmiryolu", "Hava"]
 DASHBOARD_VALUE_COLUMN = "Yük həcmi (ton)"
 DASHBOARD_DATE_COLUMN = "Çıxış tarixi"
 
+FOREIGN_TRUCKS_SCHEMA = "foreign_trucks"
+FOREIGN_TRUCKS_MERGED_TABLE = "foreign_trucks_merged"
+FOREIGN_TRUCKS_COLUMNS = [
+    "IDN",
+    "CODE",
+    "SHORT_NAME",
+    "AVTO_NO",
+    "ENTER_DATE",
+    "CUST_NAME",
+    "DATESIGN",
+    "PERM_BLANK_NO",
+    "PERMISSION_PRICE",
+    "DIRECTION",
+    "HES_NAME",
+    "CONS_NAME",
+    "WEIGHT",
+    "TOTAL_WEIGHT",
+    "FROMTO",
+    "WIDTH",
+    "HEIGHT",
+    "WEIGHT_PER_AX",
+    "PLACE_WHEEL_COUNT",
+]
+FOREIGN_TRUCKS_DATE_COLUMNS = {"ENTER_DATE", "DATESIGN"}
+FOREIGN_TRUCKS_FILTER_COLUMNS = {
+    "date_from": "ENTER_DATE",
+    "date_to": "ENTER_DATE",
+    "idn": "IDN",
+    "code": "CODE",
+    "cust_name": "CUST_NAME",
+    "perm_blank_no": "PERM_BLANK_NO",
+    "fromto": "FROMTO",
+    "short_name": "SHORT_NAME",
+    "avto_no": "AVTO_NO",
+    "hes_name": "HES_NAME",
+    "cons_name": "CONS_NAME",
+}
+FOREIGN_TRUCKS_FILTER_FIELDS = [
+    {"name": "date_from", "label": "Daxil olma tarixi - başlanğıc", "type": "date"},
+    {"name": "date_to", "label": "Daxil olma tarixi - son", "type": "date"},
+    {"name": "idn", "label": "IDN", "type": "text"},
+    {"name": "code", "label": "CODE", "type": "text"},
+    {"name": "cust_name", "label": "Gömrük postu", "type": "select"},
+    {"name": "perm_blank_no", "label": "İcazə blankın nömrəsi", "type": "text"},
+    {"name": "fromto", "label": "Başlanğıc-təyinat ölkəsi", "type": "combobox"},
+    {"name": "short_name", "label": "Daşıyıcı Mənsubiyyət ölkəsi", "type": "select"},
+    {"name": "avto_no", "label": "Avtomobil nömrəsi", "type": "text"},
+    {"name": "hes_name", "label": "İcazə növü", "type": "select"},
+    {"name": "cons_name", "label": "Güzəşt növü", "type": "select"},
+]
+FOREIGN_TRUCKS_FILTERS = {field["name"]: field["label"] for field in FOREIGN_TRUCKS_FILTER_FIELDS}
+FOREIGN_TRUCKS_SELECT_FILTERS = [
+    field["name"] for field in FOREIGN_TRUCKS_FILTER_FIELDS if field["type"] == "select"
+]
+FOREIGN_TRUCKS_COMBOBOX_FILTERS = [
+    field["name"] for field in FOREIGN_TRUCKS_FILTER_FIELDS if field["type"] == "combobox"
+]
+FOREIGN_TRUCKS_TEXT_FILTERS = [
+    field["name"] for field in FOREIGN_TRUCKS_FILTER_FIELDS if field["type"] == "text"
+]
+
 DASHBOARD_FILTER_COLUMNS = {
     "date_from": DASHBOARD_DATE_COLUMN,
     "date_to": DASHBOARD_DATE_COLUMN,
@@ -188,6 +249,7 @@ DASHBOARD_FILTER_FIELDS = [
 ]
 
 REPORT_TOP_LIMIT = 10
+REPORT_POST_LIMIT = 100
 
 
 def quote_name(name):
@@ -567,6 +629,215 @@ def get_transit_portal_download_rows(params):
             [*query_params, DOWNLOAD_LIMIT],
         )
         return portal_column_labels(columns), cursor.fetchall()
+
+
+def foreign_trucks_qualified_table():
+    return f"{quote_name(FOREIGN_TRUCKS_SCHEMA)}.{quote_name(FOREIGN_TRUCKS_MERGED_TABLE)}"
+
+
+def foreign_trucks_table_exists():
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = %s
+                  AND table_name = %s
+            )
+            """,
+            [FOREIGN_TRUCKS_SCHEMA, FOREIGN_TRUCKS_MERGED_TABLE],
+        )
+        return cursor.fetchone()[0]
+
+
+def get_available_foreign_trucks_columns():
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = %s
+              AND table_name = %s
+            """,
+            [FOREIGN_TRUCKS_SCHEMA, FOREIGN_TRUCKS_MERGED_TABLE],
+        )
+        available = {row[0] for row in cursor.fetchall()}
+    return [column for column in FOREIGN_TRUCKS_COLUMNS if column in available]
+
+
+def foreign_trucks_filter_options(columns):
+    options = {}
+    qualified_table = foreign_trucks_qualified_table()
+    with connection.cursor() as cursor:
+        for key in [*FOREIGN_TRUCKS_SELECT_FILTERS, *FOREIGN_TRUCKS_COMBOBOX_FILTERS]:
+            column = FOREIGN_TRUCKS_FILTER_COLUMNS[key]
+            if column not in columns:
+                options[key] = []
+                continue
+            quoted_column = quote_name(column)
+            limit = 3000 if key in FOREIGN_TRUCKS_COMBOBOX_FILTERS else 500
+            cursor.execute(
+                f"""
+                SELECT DISTINCT {quoted_column}
+                FROM {qualified_table}
+                WHERE {quoted_column} IS NOT NULL AND btrim({quoted_column}::text) <> ''
+                ORDER BY {quoted_column}
+                LIMIT %s
+                """,
+                [limit],
+            )
+            options[key] = [row[0] for row in cursor.fetchall()]
+    for key in FOREIGN_TRUCKS_TEXT_FILTERS:
+        options[key] = []
+    return options
+
+
+def build_foreign_trucks_where(filters, columns):
+    clauses = []
+    params = []
+    date_column = FOREIGN_TRUCKS_FILTER_COLUMNS["date_from"]
+    if filters.get("date_from") and date_column in columns:
+        clauses.append(f"{quote_name(date_column)}::date >= %s")
+        params.append(filters["date_from"])
+    if filters.get("date_to") and date_column in columns:
+        clauses.append(f"{quote_name(date_column)}::date <= %s")
+        params.append(filters["date_to"])
+
+    for key in [*FOREIGN_TRUCKS_SELECT_FILTERS, *FOREIGN_TRUCKS_COMBOBOX_FILTERS]:
+        column = FOREIGN_TRUCKS_FILTER_COLUMNS[key]
+        if column in columns and filters.get(key):
+            clauses.append(f"{quote_name(column)} = %s")
+            params.append(filters[key])
+
+    for key in FOREIGN_TRUCKS_TEXT_FILTERS:
+        column = FOREIGN_TRUCKS_FILTER_COLUMNS[key]
+        if column in columns and filters.get(key):
+            clauses.append(f"{quote_name(column)}::text ILIKE %s")
+            params.append(f"%{filters[key]}%")
+
+    where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    return where_sql, params
+
+
+def foreign_trucks_select_sql(columns):
+    select_parts = []
+    for column in columns:
+        quoted_column = quote_name(column)
+        if column in FOREIGN_TRUCKS_DATE_COLUMNS:
+            select_parts.append(f"NULLIF(left({quoted_column}::text, 19), '') AS {quoted_column}")
+        else:
+            select_parts.append(quoted_column)
+    return ", ".join(select_parts)
+
+
+def foreign_trucks_column_labels(columns):
+    return list(columns)
+
+
+def foreign_trucks_order_sql(columns):
+    order_parts = []
+    if "ENTER_DATE" in columns:
+        order_parts.append(f"{quote_name('ENTER_DATE')} DESC NULLS LAST")
+    if "DATESIGN" in columns:
+        order_parts.append(f"{quote_name('DATESIGN')} DESC NULLS LAST")
+    if "source_file_path" in columns:
+        order_parts.append(f"{quote_name('source_file_path')} DESC")
+    return f"ORDER BY {', '.join(order_parts)}" if order_parts else ""
+
+
+def foreign_trucks_rows(params, *, limit=PAGE_SIZE, offset=0):
+    columns = get_available_foreign_trucks_columns()
+    filters = {key: params.get(key, "").strip() for key in FOREIGN_TRUCKS_FILTERS}
+    if not columns:
+        return columns, filters, [], 0
+    where_sql, query_params = build_foreign_trucks_where(filters, columns)
+    select_columns = foreign_trucks_select_sql(columns)
+    order_sql = foreign_trucks_order_sql(columns)
+    qualified_table = foreign_trucks_qualified_table()
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT {select_columns}
+            FROM {qualified_table}
+            {where_sql}
+            {order_sql}
+            LIMIT %s OFFSET %s
+            """,
+            [*query_params, limit, offset],
+        )
+        rows = [{"cells": row} for row in cursor.fetchall()]
+        cursor.execute(f"SELECT count(*) FROM {qualified_table} {where_sql}", query_params)
+        filtered_count = cursor.fetchone()[0]
+    return columns, filters, rows, filtered_count
+
+
+def get_foreign_trucks_context(params):
+    page = clean_page_number(params.get("page"))
+    offset = (page - 1) * PAGE_SIZE
+    columns, filters, rows, filtered_count = foreign_trucks_rows(params, limit=PAGE_SIZE, offset=offset)
+    total_pages = max(1, (filtered_count + PAGE_SIZE - 1) // PAGE_SIZE)
+    if page > total_pages:
+        page = total_pages
+        offset = (page - 1) * PAGE_SIZE
+        columns, filters, rows, filtered_count = foreign_trucks_rows(params, limit=PAGE_SIZE, offset=offset)
+    base_query = QueryDict(mutable=True)
+    for key, value in filters.items():
+        if value:
+            base_query[key] = value
+    download_query = base_query.copy()
+    download_query["download"] = "xlsx"
+    filter_options = foreign_trucks_filter_options(columns) if columns else {}
+
+    return {
+        "columns": columns,
+        "column_labels": foreign_trucks_column_labels(columns),
+        "rows": rows,
+        "filters": filters,
+        "filter_labels": FOREIGN_TRUCKS_FILTERS,
+        "filter_options": filter_options,
+        "filter_fields": enrich_filter_fields(FOREIGN_TRUCKS_FILTER_FIELDS, filters, filter_options),
+        "filtered_count": filtered_count,
+        "limit": PAGE_SIZE,
+        "page": page,
+        "total_pages": total_pages,
+        "has_previous": page > 1,
+        "has_next": page < total_pages,
+        "previous_page": page - 1,
+        "next_page": page + 1,
+        "pagination_items": pagination_items(page, total_pages),
+        "page_start": offset + 1 if filtered_count else 0,
+        "page_end": min(offset + len(rows), filtered_count),
+        "query_string": base_query.urlencode(),
+        "download_query_string": download_query.urlencode(),
+        "download_limit": DOWNLOAD_LIMIT,
+        "eyebrow": "Foreign trucks database",
+        "heading": "Raw Foreign Trucks Data",
+    }
+
+
+def get_foreign_trucks_download_rows(params):
+    columns = get_available_foreign_trucks_columns()
+    filters = {key: params.get(key, "").strip() for key in FOREIGN_TRUCKS_FILTERS}
+    if not columns:
+        return [], []
+    where_sql, query_params = build_foreign_trucks_where(filters, columns)
+    select_columns = foreign_trucks_select_sql(columns)
+    qualified_table = foreign_trucks_qualified_table()
+    order_sql = foreign_trucks_order_sql(columns)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT {select_columns}
+            FROM {qualified_table}
+            {where_sql}
+            {order_sql}
+            LIMIT %s
+            """,
+            [*query_params, DOWNLOAD_LIMIT],
+        )
+        return foreign_trucks_column_labels(columns), cursor.fetchall()
 
 
 def dashboard_qualified_table():
@@ -1292,6 +1563,124 @@ def report_rows_for_dimension_and_country(column, periods: TransitDataPeriods, c
     ]
 
 
+TRANSIT_CORRIDOR_REPORT_OPTIONS = ["Şərq-Qərb", "Şimal-Cənub", "Şimal-Qərb", "Cənub-Qərb"]
+TRANSIT_CORRIDOR_REPORT_TRANSPORTS = ["Avtomobil", "Dəmiryolu"]
+
+
+def report_period_total_for_corridor(column, value, start_date, end_date, corridor, *, transport_values=None):
+    transport_values = transport_values or DASHBOARD_DEFAULT_TRANSPORTS
+    transport_placeholders = ", ".join(["%s"] * len(transport_values))
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT COALESCE(SUM({quote_name(DASHBOARD_VALUE_COLUMN)}), 0)::double precision
+            FROM {dashboard_qualified_table()}
+            WHERE {quote_name(column)} = %s
+              AND {quote_name('Dəhliz')} = %s
+              AND {quote_name('Nəqliyyat növü')} IN ({transport_placeholders})
+              AND {quote_name(DASHBOARD_DATE_COLUMN)}::date >= %s
+              AND {quote_name(DASHBOARD_DATE_COLUMN)}::date < %s
+            """,
+            [value, corridor, *transport_values, start_date, end_date],
+        )
+        return float(cursor.fetchone()[0] or 0)
+
+
+def report_total_for_values_and_corridor(column, values, periods: TransitDataPeriods, corridor, *, transport_values=None):
+    transport_values = transport_values or DASHBOARD_DEFAULT_TRANSPORTS
+    return build_report_row(
+        "Total",
+        {
+            "annual_previous": sum(
+                report_period_total_for_corridor(
+                    column, value, periods.annual_previous_start, periods.annual_previous_end, corridor, transport_values=transport_values
+                )
+                for value in values
+            ),
+            "annual_current": sum(
+                report_period_total_for_corridor(
+                    column, value, periods.annual_current_start, periods.annual_current_end, corridor, transport_values=transport_values
+                )
+                for value in values
+            ),
+            "partial_previous": sum(
+                report_period_total_for_corridor(
+                    column, value, periods.partial_previous_start, periods.partial_previous_end, corridor, transport_values=transport_values
+                )
+                for value in values
+            ),
+            "partial_current": sum(
+                report_period_total_for_corridor(
+                    column, value, periods.partial_current_start, periods.partial_current_end, corridor, transport_values=transport_values
+                )
+                for value in values
+            ),
+        },
+    )
+
+
+def report_top_values_for_corridor(column, start_date, end_date, corridor, *, limit=8, preferred_values=None, transport_values=None):
+    if preferred_values:
+        return preferred_values
+
+    transport_values = transport_values or DASHBOARD_DEFAULT_TRANSPORTS
+    quoted_column = quote_name(column)
+    transport_placeholders = ", ".join(["%s"] * len(transport_values))
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT {quoted_column}, COALESCE(SUM({quote_name(DASHBOARD_VALUE_COLUMN)}), 0)::double precision AS value
+            FROM {dashboard_qualified_table()}
+            WHERE {quote_name('Dəhliz')} = %s
+              AND {quote_name('Nəqliyyat növü')} IN ({transport_placeholders})
+              AND {quote_name(DASHBOARD_DATE_COLUMN)}::date >= %s
+              AND {quote_name(DASHBOARD_DATE_COLUMN)}::date < %s
+              AND {quoted_column} IS NOT NULL
+              AND btrim({quoted_column}::text) <> ''
+            GROUP BY {quoted_column}
+            ORDER BY value DESC
+            LIMIT %s
+            """,
+            [corridor, *transport_values, start_date, end_date, limit],
+        )
+        return [row[0] for row in cursor.fetchall()]
+
+
+def report_rows_for_dimension_and_corridor(
+    column, periods: TransitDataPeriods, corridor, *, limit=8, preferred_values=None, transport_values=None
+):
+    transport_values = transport_values or DASHBOARD_DEFAULT_TRANSPORTS
+    labels = report_top_values_for_corridor(
+        column,
+        periods.partial_current_start,
+        periods.partial_current_end,
+        corridor,
+        limit=limit,
+        preferred_values=preferred_values,
+        transport_values=transport_values,
+    )
+    return [
+        build_report_row(
+            label,
+            {
+                "annual_previous": report_period_total_for_corridor(
+                    column, label, periods.annual_previous_start, periods.annual_previous_end, corridor, transport_values=transport_values
+                ),
+                "annual_current": report_period_total_for_corridor(
+                    column, label, periods.annual_current_start, periods.annual_current_end, corridor, transport_values=transport_values
+                ),
+                "partial_previous": report_period_total_for_corridor(
+                    column, label, periods.partial_previous_start, periods.partial_previous_end, corridor, transport_values=transport_values
+                ),
+                "partial_current": report_period_total_for_corridor(
+                    column, label, periods.partial_current_start, periods.partial_current_end, corridor, transport_values=transport_values
+                ),
+            },
+        )
+        for label in labels
+    ]
+
+
 def get_transit_report_country_values():
     with connection.cursor() as cursor:
         cursor.execute(
@@ -1604,8 +1993,9 @@ def get_transit_dynamics_report_context_for_language(base_context, language):
         translate_transit_report_sentence(item, language)
         for item in base_context["transport"]["bullets_partial"]
     ]
+    corridor_dimension = base_context.get("corridors_dimension", "Dəhliz")
     context["corridors"]["rows"] = [
-        translate_transit_report_row(row, "Dəhliz", language)
+        translate_transit_report_row(row, corridor_dimension, language)
         for row in base_context["corridors"]["rows"]
     ]
     context["products"]["rows"] = [
@@ -1735,6 +2125,246 @@ def get_transit_country_report_contexts(base_context):
         else:
             report["text"]["title"] = f"Azərbaycan və {country} arasında tranzit daşımalar hesabatı"
     return reports
+
+
+def format_corridor_report_number(periods: TransitDataPeriods) -> str:
+    return f"TR-003-{periods.reference_year}/{periods.reference_month:02d}-Dəhlizlər"
+
+
+def get_transit_corridor_report_context(selected_month=None, selected_corridor=None):
+    if not dashboard_table_exists():
+        return {
+            "available": False,
+            "message": (
+                "Hesabat cədvəli hazır deyil. Əvvəlcə transit_for_dashboard_on_ministry_portal "
+                "cədvəlini yenidən yaradın."
+            ),
+        }
+
+    max_periods = load_transit_data_periods()
+    if max_periods is None:
+        return {
+            "available": False,
+            "message": (
+                "Hesabat üçün çıxış tarixi tapılmadı. Əvvəlcə transit məlumatlarını idxal edin "
+                "və transit_for_dashboard_on_ministry_portal cədvəlini yenidən yaradın."
+            ),
+        }
+
+    if selected_corridor not in TRANSIT_CORRIDOR_REPORT_OPTIONS:
+        selected_corridor = TRANSIT_CORRIDOR_REPORT_OPTIONS[0]
+
+    if selected_month is None:
+        selected_month = max_periods.reference_month
+    selected_month = max(1, min(int(selected_month), max_periods.reference_month))
+    periods = compute_transit_data_periods(max_periods.reference_year, selected_month)
+
+    transport_rows = report_rows_for_dimension_and_corridor(
+        "Nəqliyyat növü",
+        periods,
+        selected_corridor,
+        preferred_values=TRANSIT_CORRIDOR_REPORT_TRANSPORTS,
+        transport_values=TRANSIT_CORRIDOR_REPORT_TRANSPORTS,
+    )
+    direction_rows = report_rows_for_dimension_and_corridor(
+        "Dəhliz (istiqamətlə)", periods, selected_corridor, limit=REPORT_TOP_LIMIT, transport_values=TRANSIT_CORRIDOR_REPORT_TRANSPORTS
+    )
+    product_rows = report_rows_for_dimension_and_corridor(
+        "Məhsul adı (qısaldılmış)", periods, selected_corridor, limit=REPORT_TOP_LIMIT, transport_values=TRANSIT_CORRIDOR_REPORT_TRANSPORTS
+    )
+    sender_country_rows = report_rows_for_dimension_and_corridor(
+        "Göndərən ölkə", periods, selected_corridor, limit=REPORT_TOP_LIMIT, transport_values=TRANSIT_CORRIDOR_REPORT_TRANSPORTS
+    )
+    destination_country_rows = report_rows_for_dimension_and_corridor(
+        "Təyinat ölkə", periods, selected_corridor, limit=REPORT_TOP_LIMIT, transport_values=TRANSIT_CORRIDOR_REPORT_TRANSPORTS
+    )
+    total_row = report_total_for_values_and_corridor(
+        "Nəqliyyat növü", TRANSIT_CORRIDOR_REPORT_TRANSPORTS, periods, selected_corridor,
+        transport_values=TRANSIT_CORRIDOR_REPORT_TRANSPORTS,
+    )
+
+    return {
+        "available": True,
+        "report_type": "corridors",
+        "report_number": format_corridor_report_number(periods),
+        "selected_month": periods.reference_month,
+        "max_month": max_periods.reference_month,
+        "selected_corridor": selected_corridor,
+        "corridor_options": TRANSIT_CORRIDOR_REPORT_OPTIONS,
+        "corridors_dimension": "Dəhliz (istiqamətlə)",
+        "unit": "min tonla",
+        "annual_years": {
+            "previous": periods.annual_year_previous,
+            "current": periods.annual_year_current,
+        },
+        "partial_years": {
+            "previous": periods.partial_previous_header,
+            "current": periods.partial_current_header,
+            "label": periods.partial_label,
+        },
+        "transport": {
+            "rows": transport_rows,
+            "total": total_row,
+            "annual_sentence": report_sentence(total_row, period="annual"),
+            "partial_sentence": report_sentence(total_row, period="partial"),
+            "bullets_annual": [report_sentence(row, period="annual") for row in transport_rows],
+            "bullets_partial": [report_sentence(row, period="partial") for row in transport_rows],
+        },
+        "corridors": {"rows": direction_rows},
+        "products": {"rows": product_rows},
+        "sender_countries": {"rows": sender_country_rows},
+        "destination_countries": {"rows": destination_country_rows},
+    }
+
+
+def get_transit_corridor_report_contexts(base_context):
+    reports = get_transit_dynamics_report_contexts(base_context)
+    for report in reports:
+        if not report.get("available"):
+            continue
+        language = report["language"]
+        corridor = translate_transit_value("Dəhliz", base_context["selected_corridor"], language)
+        if language == "en":
+            report["text"]["title"] = f"Transit Shipments Report for the {corridor} Corridor"
+            report["text"]["sections"]["corridors"] = {
+                "title": "2. Transit shipments by direction within the corridor",
+                "column": "Corridor direction",
+            }
+        elif language == "ru":
+            report["text"]["title"] = f"Отчет о транзитных перевозках по коридору {corridor}"
+            report["text"]["sections"]["corridors"] = {
+                "title": "2. Транзитные перевозки по направлениям в коридоре",
+                "column": "Направление коридора",
+            }
+        else:
+            report["text"]["title"] = f"{corridor} dəhlizi üzrə tranzit daşımalar hesabatı"
+            report["text"]["sections"]["corridors"] = {
+                "title": "2. Dəhlizdə istiqamət üzrə tranzit daşımalar",
+                "column": "Dəhliz (istiqamətlə)",
+            }
+    return reports
+
+
+TRANSIT_POST_REPORT_TEXTS = {
+    "az": {
+        "intro": "Tranzit daşımaların postlar üzrə əsas göstəriciləri.",
+        "report_number_label": "Hesabat nömrəsi",
+        "title": "Azərbaycan üzərindən tranzit rejimdə daşınmış yüklərin postlar üzrə hesabatı",
+        "unit": "min tonla",
+        "dynamic": "Dinamika",
+        "sections": {
+            "entry_posts": {"title": "1. Gömrük giriş postları üzrə tranzit daşımalar", "column": "Gömrük giriş postu"},
+            "exit_posts": {"title": "2. Gömrük çıxış postları üzrə tranzit daşımalar", "column": "Gömrük çıxış postu"},
+        },
+    },
+    "en": {
+        "intro": "Main indicators for transit shipments by customs posts.",
+        "report_number_label": "Report number",
+        "title": "Report on Cargo Transported in Transit Mode Through Azerbaijan by Customs Posts",
+        "unit": "thousand tons",
+        "dynamic": "Dynamics",
+        "sections": {
+            "entry_posts": {"title": "1. Transit shipments by customs entry posts", "column": "Customs entry post"},
+            "exit_posts": {"title": "2. Transit shipments by customs exit posts", "column": "Customs exit post"},
+        },
+    },
+    "ru": {
+        "intro": "Основные показатели транзитных перевозок по таможенным постам.",
+        "report_number_label": "Номер отчета",
+        "title": "Отчет о грузах, перевезенных в транзитном режиме через Азербайджан, по таможенным постам",
+        "unit": "тыс. тонн",
+        "dynamic": "Динамика",
+        "sections": {
+            "entry_posts": {"title": "1. Транзитные перевозки по таможенным постам въезда", "column": "Таможенный пост въезда"},
+            "exit_posts": {"title": "2. Транзитные перевозки по таможенным постам выезда", "column": "Таможенный пост выезда"},
+        },
+    },
+}
+
+
+def format_posts_report_number(periods: TransitDataPeriods) -> str:
+    return f"TR-004-{periods.reference_year}/{periods.reference_month:02d}-Postlar"
+
+
+def get_transit_posts_report_context(selected_month=None):
+    if not dashboard_table_exists():
+        return {
+            "available": False,
+            "message": (
+                "Hesabat cədvəli hazır deyil. Əvvəlcə transit_for_dashboard_on_ministry_portal "
+                "cədvəlini yenidən yaradın."
+            ),
+        }
+
+    max_periods = load_transit_data_periods()
+    if max_periods is None:
+        return {
+            "available": False,
+            "message": (
+                "Hesabat üçün çıxış tarixi tapılmadı. Əvvəlcə transit məlumatlarını idxal edin "
+                "və transit_for_dashboard_on_ministry_portal cədvəlini yenidən yaradın."
+            ),
+        }
+
+    if selected_month is None:
+        selected_month = max_periods.reference_month
+    selected_month = max(1, min(int(selected_month), max_periods.reference_month))
+    periods = compute_transit_data_periods(max_periods.reference_year, selected_month)
+
+    return {
+        "available": True,
+        "report_type": "posts",
+        "report_number": format_posts_report_number(periods),
+        "selected_month": periods.reference_month,
+        "max_month": max_periods.reference_month,
+        "unit": "min tonla",
+        "annual_years": {
+            "previous": periods.annual_year_previous,
+            "current": periods.annual_year_current,
+        },
+        "partial_years": {
+            "previous": periods.partial_previous_header,
+            "current": periods.partial_current_header,
+            "label": periods.partial_label,
+        },
+        "entry_posts": {
+            "rows": report_rows_for_dimension("Gömrük giriş postu", periods, limit=REPORT_POST_LIMIT),
+        },
+        "exit_posts": {
+            "rows": report_rows_for_dimension("Gömrük çıxış postu", periods, limit=REPORT_POST_LIMIT),
+        },
+    }
+
+
+def get_transit_posts_report_context_for_language(base_context, language):
+    context = deepcopy(base_context)
+    text = deepcopy(TRANSIT_POST_REPORT_TEXTS[language])
+    context["language"] = language
+    context["text"] = text
+
+    if not context.get("available"):
+        if language != "az":
+            context["message"] = TRANSIT_DYNAMICS_REPORT_TEXTS[language]["unavailable_message"]
+        return context
+
+    context["unit"] = text["unit"]
+    context["partial_years"]["label"] = translate_transit_partial_label(context["partial_years"]["label"], language)
+    context["entry_posts"]["rows"] = [
+        translate_transit_report_row(row, "Gömrük giriş postu", language)
+        for row in base_context["entry_posts"]["rows"]
+    ]
+    context["exit_posts"]["rows"] = [
+        translate_transit_report_row(row, "Gömrük çıxış postu", language)
+        for row in base_context["exit_posts"]["rows"]
+    ]
+    return context
+
+
+def get_transit_posts_report_contexts(base_context):
+    return [
+        get_transit_posts_report_context_for_language(base_context, language)
+        for language in ("az", "en", "ru")
+    ]
 
 
 DOCX_HEADER_FILL = "073763"
@@ -1956,7 +2586,62 @@ def _add_transit_docx_summary(document, report_context, *, period):
     )
 
 
+def _add_posts_report_docx_table(document, report_context, section_key, rows):
+    text = report_context["text"]
+    section_text = text["sections"][section_key]
+    period_headers = [
+        report_context["annual_years"]["previous"],
+        report_context["annual_years"]["current"],
+        report_context["partial_years"]["previous"],
+        report_context["partial_years"]["current"],
+    ]
+    _add_docx_paragraph(
+        document,
+        f"{section_text['title']}, {report_context['unit']}",
+        bold=True,
+        size=14,
+        space_after=10,
+    )
+    _add_report_docx_table(document, [section_text["column"], *period_headers, text["dynamic"]], rows)
+
+
+def build_transit_posts_report_docx(report_context):
+    text = report_context.get("text", TRANSIT_POST_REPORT_TEXTS["az"])
+    document = Document()
+    section = document.sections[0]
+    section.top_margin = Inches(0.6)
+    section.bottom_margin = Inches(0.6)
+    section.left_margin = Inches(0.65)
+    section.right_margin = Inches(0.65)
+
+    _add_docx_paragraph(
+        document,
+        f"{text['report_number_label']}: {report_context['report_number']}",
+        bold=True,
+        size=10,
+        space_after=18,
+    )
+    _add_docx_paragraph(
+        document,
+        text["title"],
+        bold=True,
+        size=16,
+        alignment=WD_ALIGN_PARAGRAPH.CENTER,
+        space_after=28,
+    )
+    _add_posts_report_docx_table(document, report_context, "entry_posts", report_context["entry_posts"]["rows"])
+    _add_posts_report_docx_table(document, report_context, "exit_posts", report_context["exit_posts"]["rows"])
+
+    output = BytesIO()
+    document.save(output)
+    output.seek(0)
+    return output
+
+
 def build_transit_dynamics_report_docx(report_context):
+    if report_context.get("report_type") == "posts":
+        return build_transit_posts_report_docx(report_context)
+
     text = report_context.get("text", TRANSIT_DYNAMICS_REPORT_TEXTS["az"])
     document = Document()
     section = document.sections[0]
