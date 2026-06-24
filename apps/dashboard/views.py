@@ -12,6 +12,8 @@ from apps.dashboard.services import (
     build_transit_dynamics_report_pdf,
     get_foreign_trucks_context,
     get_foreign_trucks_download_rows,
+    get_local_trucks_context,
+    get_local_trucks_download_rows,
     get_transit_download_rows,
     get_transit_corridor_report_context,
     get_transit_corridor_report_contexts,
@@ -152,6 +154,13 @@ def submodule_detail(request, module_slug, submodule_slug):
             "download_loader": get_foreign_trucks_download_rows,
             "sheet_title": "Foreign Trucks",
             "filename": "foreign_trucks.xlsx",
+        }
+    elif submodule.module.slug == "datalar" and submodule.slug == "yerli-tir-lar":
+        transit_table = {
+            "context_loader": get_local_trucks_context,
+            "download_loader": get_local_trucks_download_rows,
+            "sheet_title": "Local Trucks",
+            "filename": "local_trucks.xlsx",
         }
     elif submodule.module.slug == "processed-data" and submodule.slug == "transit":
         transit_table = {

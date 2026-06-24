@@ -578,7 +578,7 @@ button.primary,
     overflow-y: auto;
     border: 1px solid var(--border);
     border-radius: 8px;
-    background: var(--surface);
+    background: #fff;
     box-shadow: 0 14px 35px rgba(15, 23, 42, 0.16);
     padding: 6px;
 }
@@ -589,7 +589,7 @@ button.primary,
     border: 0;
     border-radius: 6px;
     background: transparent;
-    color: var(--text);
+    color: var(--ink);
     cursor: pointer;
     font: inherit;
     padding: 8px 10px;

@@ -7,20 +7,9 @@ from apps.imports.services.truck_routes import (
     fromto_to_sql_expression,
 )
 
-FOREIGN_TRUCKS_SCHEMA = "foreign_trucks"
-MERGED_TABLE = "foreign_trucks_merged"
-SOURCE_TABLE_PREFIX = "foreign_trucks_"
-TEXT_COLUMNS = {
-    "source_file_path",
-    "source_sheet_name",
-    "SHORT_NAME",
-    "AVTO_NO",
-    "CUST_NAME",
-    "PERM_BLANK_NO",
-    "HES_NAME",
-    "CONS_NAME",
-    "FROMTO",
-}
+LOCAL_TRUCKS_SCHEMA = "local_trucks"
+MERGED_TABLE = "local_trucks_merged"
+SOURCE_TABLE_PREFIX = "local_trucks_"
 NUMERIC_COLUMNS = {
     "source_row_number",
     "import_job_id",
@@ -46,7 +35,7 @@ EXCLUDED_SOURCE_TABLES = {MERGED_TABLE}
 
 
 @dataclass(frozen=True)
-class ForeignTrucksMergeResult:
+class LocalTrucksMergeResult:
     source_table_count: int
     merged_row_count: int
     merged_table: str
@@ -71,7 +60,7 @@ def source_tables(cursor):
           AND table_name <> ALL(%s)
         ORDER BY table_name
         """,
-        [FOREIGN_TRUCKS_SCHEMA, f"{SOURCE_TABLE_PREFIX}%", list(EXCLUDED_SOURCE_TABLES)],
+        [LOCAL_TRUCKS_SCHEMA, f"{SOURCE_TABLE_PREFIX}%", list(EXCLUDED_SOURCE_TABLES)],
     )
     return [row[0] for row in cursor.fetchall()]
 
@@ -87,7 +76,7 @@ def table_columns(cursor, tables):
           AND table_name = ANY(%s)
         ORDER BY table_name, ordinal_position
         """,
-        [FOREIGN_TRUCKS_SCHEMA, tables],
+        [LOCAL_TRUCKS_SCHEMA, tables],
     )
     columns_by_table = {table: [] for table in tables}
     for table_name, column_name, data_type, _ordinal_position in cursor.fetchall():
@@ -173,7 +162,7 @@ def select_sql_for_table(table, columns, table_column_map):
         else:
             expression = f"NULL::{merged_type_for(column)}"
         select_parts.append(f"{expression} AS {quote_name(column)}")
-    return f"SELECT {', '.join(select_parts)} FROM {qualified_name(FOREIGN_TRUCKS_SCHEMA, table)}"
+    return f"SELECT {', '.join(select_parts)} FROM {qualified_name(LOCAL_TRUCKS_SCHEMA, table)}"
 
 
 def create_merged_table(cursor, tables, columns_by_table):
@@ -181,51 +170,53 @@ def create_merged_table(cursor, tables, columns_by_table):
     merged_columns_sql = ", ".join(
         f"{quote_name(column)} {merged_type_for(column)}" for column in columns
     )
-    cursor.execute(f"DROP TABLE IF EXISTS {qualified_name(FOREIGN_TRUCKS_SCHEMA, MERGED_TABLE)}")
+    cursor.execute(f"DROP TABLE IF EXISTS {qualified_name(LOCAL_TRUCKS_SCHEMA, MERGED_TABLE)}")
     cursor.execute(
-        f"CREATE TABLE {qualified_name(FOREIGN_TRUCKS_SCHEMA, MERGED_TABLE)} "
+        f"CREATE TABLE {qualified_name(LOCAL_TRUCKS_SCHEMA, MERGED_TABLE)} "
         f"({merged_columns_sql})"
     )
     union_sql = "\nUNION ALL\n".join(
         select_sql_for_table(table, columns, columns_by_table[table]) for table in tables
     )
     cursor.execute(
-        f"INSERT INTO {qualified_name(FOREIGN_TRUCKS_SCHEMA, MERGED_TABLE)} "
+        f"INSERT INTO {qualified_name(LOCAL_TRUCKS_SCHEMA, MERGED_TABLE)} "
         f"SELECT * FROM ({union_sql}) merged_source"
     )
-    cursor.execute(
-        f"CREATE INDEX IF NOT EXISTS {quote_name(f'{MERGED_TABLE}_enter_date_idx')} "
-        f"ON {qualified_name(FOREIGN_TRUCKS_SCHEMA, MERGED_TABLE)} ({quote_name('ENTER_DATE')} DESC NULLS LAST)"
-    )
-    cursor.execute(
-        f"CREATE INDEX IF NOT EXISTS {quote_name(f'{MERGED_TABLE}_datesign_idx')} "
-        f"ON {qualified_name(FOREIGN_TRUCKS_SCHEMA, MERGED_TABLE)} ({quote_name('DATESIGN')} DESC NULLS LAST)"
-    )
+    if "ENTER_DATE" in columns:
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS {quote_name(f'{MERGED_TABLE}_enter_date_idx')} "
+            f"ON {qualified_name(LOCAL_TRUCKS_SCHEMA, MERGED_TABLE)} ({quote_name('ENTER_DATE')} DESC NULLS LAST)"
+        )
+    if "DATESIGN" in columns:
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS {quote_name(f'{MERGED_TABLE}_datesign_idx')} "
+            f"ON {qualified_name(LOCAL_TRUCKS_SCHEMA, MERGED_TABLE)} ({quote_name('DATESIGN')} DESC NULLS LAST)"
+        )
     for column in ["CUST_NAME", "SHORT_NAME", "FROMTO", "HES_NAME"]:
         if column in columns:
             cursor.execute(
                 f"CREATE INDEX IF NOT EXISTS {quote_name(f'{MERGED_TABLE}_{column.lower()}_idx')} "
-                f"ON {qualified_name(FOREIGN_TRUCKS_SCHEMA, MERGED_TABLE)} ({quote_name(column)})"
+                f"ON {qualified_name(LOCAL_TRUCKS_SCHEMA, MERGED_TABLE)} ({quote_name(column)})"
             )
 
 
-def rebuild_foreign_trucks_merged():
+def rebuild_local_trucks_merged():
     with connection.cursor() as cursor:
-        cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {quote_name(FOREIGN_TRUCKS_SCHEMA)}")
+        cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {quote_name(LOCAL_TRUCKS_SCHEMA)}")
         tables = source_tables(cursor)
         if not tables:
-            cursor.execute(f"DROP TABLE IF EXISTS {qualified_name(FOREIGN_TRUCKS_SCHEMA, MERGED_TABLE)}")
-            return ForeignTrucksMergeResult(
+            cursor.execute(f"DROP TABLE IF EXISTS {qualified_name(LOCAL_TRUCKS_SCHEMA, MERGED_TABLE)}")
+            return LocalTrucksMergeResult(
                 source_table_count=0,
                 merged_row_count=0,
-                merged_table=f"{FOREIGN_TRUCKS_SCHEMA}.{MERGED_TABLE}",
+                merged_table=f"{LOCAL_TRUCKS_SCHEMA}.{MERGED_TABLE}",
             )
         columns_by_table = table_columns(cursor, tables)
         create_merged_table(cursor, tables, columns_by_table)
-        cursor.execute(f"SELECT count(*) FROM {qualified_name(FOREIGN_TRUCKS_SCHEMA, MERGED_TABLE)}")
+        cursor.execute(f"SELECT count(*) FROM {qualified_name(LOCAL_TRUCKS_SCHEMA, MERGED_TABLE)}")
         row_count = cursor.fetchone()[0]
-    return ForeignTrucksMergeResult(
+    return LocalTrucksMergeResult(
         source_table_count=len(tables),
         merged_row_count=row_count,
-        merged_table=f"{FOREIGN_TRUCKS_SCHEMA}.{MERGED_TABLE}",
+        merged_table=f"{LOCAL_TRUCKS_SCHEMA}.{MERGED_TABLE}",
     )

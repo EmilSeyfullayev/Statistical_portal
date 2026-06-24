@@ -163,6 +163,8 @@ DASHBOARD_DATE_COLUMN = "Çıxış tarixi"
 
 FOREIGN_TRUCKS_SCHEMA = "foreign_trucks"
 FOREIGN_TRUCKS_MERGED_TABLE = "foreign_trucks_merged"
+LOCAL_TRUCKS_SCHEMA = "local_trucks"
+LOCAL_TRUCKS_MERGED_TABLE = "local_trucks_merged"
 FOREIGN_TRUCKS_COLUMNS = [
     "IDN",
     "CODE",
@@ -179,12 +181,17 @@ FOREIGN_TRUCKS_COLUMNS = [
     "WEIGHT",
     "TOTAL_WEIGHT",
     "FROMTO",
+    "FROM",
+    "TO",
     "WIDTH",
     "HEIGHT",
     "WEIGHT_PER_AX",
     "PLACE_WHEEL_COUNT",
 ]
 FOREIGN_TRUCKS_DATE_COLUMNS = {"ENTER_DATE", "DATESIGN"}
+LOCAL_TRUCKS_HIDDEN_COLUMNS = {"SHORT_NAME", "PERM_BLANK_NO", "HES_NAME", "CONS_NAME"}
+LOCAL_TRUCKS_COLUMNS = [column for column in FOREIGN_TRUCKS_COLUMNS if column not in LOCAL_TRUCKS_HIDDEN_COLUMNS]
+LOCAL_TRUCKS_DATE_COLUMNS = {"ENTER_DATE", "DATESIGN"}
 FOREIGN_TRUCKS_FILTER_COLUMNS = {
     "date_from": "ENTER_DATE",
     "date_to": "ENTER_DATE",
@@ -220,6 +227,37 @@ FOREIGN_TRUCKS_COMBOBOX_FILTERS = [
 ]
 FOREIGN_TRUCKS_TEXT_FILTERS = [
     field["name"] for field in FOREIGN_TRUCKS_FILTER_FIELDS if field["type"] == "text"
+]
+
+
+LOCAL_TRUCKS_HIDDEN_FILTERS = {"short_name", "perm_blank_no", "hes_name", "cons_name"}
+LOCAL_TRUCKS_FILTER_COLUMNS = {
+    key: value
+    for key, value in FOREIGN_TRUCKS_FILTER_COLUMNS.items()
+    if key not in LOCAL_TRUCKS_HIDDEN_FILTERS
+}
+LOCAL_TRUCKS_FILTER_COLUMNS.update({
+    "datesign_from": "DATESIGN",
+    "datesign_to": "DATESIGN",
+})
+LOCAL_TRUCKS_FILTER_FIELDS = [
+    field
+    for field in FOREIGN_TRUCKS_FILTER_FIELDS
+    if field["name"] not in LOCAL_TRUCKS_HIDDEN_FILTERS
+]
+LOCAL_TRUCKS_FILTER_FIELDS.extend([
+    {"name": "datesign_from", "label": "DATESIGN - başlanğıc", "type": "date"},
+    {"name": "datesign_to", "label": "DATESIGN - son", "type": "date"},
+])
+LOCAL_TRUCKS_FILTERS = {field["name"]: field["label"] for field in LOCAL_TRUCKS_FILTER_FIELDS}
+LOCAL_TRUCKS_SELECT_FILTERS = [
+    field["name"] for field in LOCAL_TRUCKS_FILTER_FIELDS if field["type"] == "select"
+]
+LOCAL_TRUCKS_COMBOBOX_FILTERS = [
+    field["name"] for field in LOCAL_TRUCKS_FILTER_FIELDS if field["type"] == "combobox"
+]
+LOCAL_TRUCKS_TEXT_FILTERS = [
+    field["name"] for field in LOCAL_TRUCKS_FILTER_FIELDS if field["type"] == "text"
 ]
 
 DASHBOARD_FILTER_COLUMNS = {
@@ -264,6 +302,14 @@ def enrich_filter_fields(field_defs, filters, filter_options):
             "options": filter_options.get(field["name"], []),
         }
         for field in field_defs
+    ]
+
+
+def available_filter_fields(field_defs, filter_columns, columns):
+    return [
+        field
+        for field in field_defs
+        if filter_columns.get(field["name"]) in columns
     ]
 
 
@@ -669,8 +715,12 @@ def get_available_foreign_trucks_columns():
 def foreign_trucks_filter_options(columns):
     options = {}
     qualified_table = foreign_trucks_qualified_table()
+    available_fields = available_filter_fields(FOREIGN_TRUCKS_FILTER_FIELDS, FOREIGN_TRUCKS_FILTER_COLUMNS, columns)
+    available_keys = {field["name"] for field in available_fields}
     with connection.cursor() as cursor:
         for key in [*FOREIGN_TRUCKS_SELECT_FILTERS, *FOREIGN_TRUCKS_COMBOBOX_FILTERS]:
+            if key not in available_keys:
+                continue
             column = FOREIGN_TRUCKS_FILTER_COLUMNS[key]
             if column not in columns:
                 options[key] = []
@@ -689,7 +739,8 @@ def foreign_trucks_filter_options(columns):
             )
             options[key] = [row[0] for row in cursor.fetchall()]
     for key in FOREIGN_TRUCKS_TEXT_FILTERS:
-        options[key] = []
+        if key in available_keys:
+            options[key] = []
     return options
 
 
@@ -748,7 +799,8 @@ def foreign_trucks_order_sql(columns):
 
 def foreign_trucks_rows(params, *, limit=PAGE_SIZE, offset=0):
     columns = get_available_foreign_trucks_columns()
-    filters = {key: params.get(key, "").strip() for key in FOREIGN_TRUCKS_FILTERS}
+    available_fields = available_filter_fields(FOREIGN_TRUCKS_FILTER_FIELDS, FOREIGN_TRUCKS_FILTER_COLUMNS, columns)
+    filters = {field["name"]: params.get(field["name"], "").strip() for field in available_fields}
     if not columns:
         return columns, filters, [], 0
     where_sql, query_params = build_foreign_trucks_where(filters, columns)
@@ -789,6 +841,7 @@ def get_foreign_trucks_context(params):
     download_query = base_query.copy()
     download_query["download"] = "xlsx"
     filter_options = foreign_trucks_filter_options(columns) if columns else {}
+    filter_fields = available_filter_fields(FOREIGN_TRUCKS_FILTER_FIELDS, FOREIGN_TRUCKS_FILTER_COLUMNS, columns)
 
     return {
         "columns": columns,
@@ -797,7 +850,7 @@ def get_foreign_trucks_context(params):
         "filters": filters,
         "filter_labels": FOREIGN_TRUCKS_FILTERS,
         "filter_options": filter_options,
-        "filter_fields": enrich_filter_fields(FOREIGN_TRUCKS_FILTER_FIELDS, filters, filter_options),
+        "filter_fields": enrich_filter_fields(filter_fields, filters, filter_options),
         "filtered_count": filtered_count,
         "limit": PAGE_SIZE,
         "page": page,
@@ -819,7 +872,8 @@ def get_foreign_trucks_context(params):
 
 def get_foreign_trucks_download_rows(params):
     columns = get_available_foreign_trucks_columns()
-    filters = {key: params.get(key, "").strip() for key in FOREIGN_TRUCKS_FILTERS}
+    available_fields = available_filter_fields(FOREIGN_TRUCKS_FILTER_FIELDS, FOREIGN_TRUCKS_FILTER_COLUMNS, columns)
+    filters = {field["name"]: params.get(field["name"], "").strip() for field in available_fields}
     if not columns:
         return [], []
     where_sql, query_params = build_foreign_trucks_where(filters, columns)
@@ -838,6 +892,228 @@ def get_foreign_trucks_download_rows(params):
             [*query_params, DOWNLOAD_LIMIT],
         )
         return foreign_trucks_column_labels(columns), cursor.fetchall()
+
+
+def local_trucks_qualified_table():
+    return f"{quote_name(LOCAL_TRUCKS_SCHEMA)}.{quote_name(LOCAL_TRUCKS_MERGED_TABLE)}"
+
+
+def local_trucks_table_exists():
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = %s
+                  AND table_name = %s
+            )
+            """,
+            [LOCAL_TRUCKS_SCHEMA, LOCAL_TRUCKS_MERGED_TABLE],
+        )
+        return cursor.fetchone()[0]
+
+
+def get_available_local_trucks_columns():
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = %s
+              AND table_name = %s
+            """,
+            [LOCAL_TRUCKS_SCHEMA, LOCAL_TRUCKS_MERGED_TABLE],
+        )
+        available = {row[0] for row in cursor.fetchall()}
+    return [column for column in LOCAL_TRUCKS_COLUMNS if column in available]
+
+
+def local_trucks_filter_options(columns):
+    options = {}
+    qualified_table = local_trucks_qualified_table()
+    available_fields = available_filter_fields(LOCAL_TRUCKS_FILTER_FIELDS, LOCAL_TRUCKS_FILTER_COLUMNS, columns)
+    available_keys = {field["name"] for field in available_fields}
+    with connection.cursor() as cursor:
+        for key in [*LOCAL_TRUCKS_SELECT_FILTERS, *LOCAL_TRUCKS_COMBOBOX_FILTERS]:
+            if key not in available_keys:
+                continue
+            column = LOCAL_TRUCKS_FILTER_COLUMNS[key]
+            quoted_column = quote_name(column)
+            limit = 3000 if key in LOCAL_TRUCKS_COMBOBOX_FILTERS else 500
+            cursor.execute(
+                f"""
+                SELECT DISTINCT {quoted_column}
+                FROM {qualified_table}
+                WHERE {quoted_column} IS NOT NULL AND btrim({quoted_column}::text) <> ''
+                ORDER BY {quoted_column}
+                LIMIT %s
+                """,
+                [limit],
+            )
+            options[key] = [row[0] for row in cursor.fetchall()]
+    for key in LOCAL_TRUCKS_TEXT_FILTERS:
+        if key in available_keys:
+            options[key] = []
+    return options
+
+
+def build_local_trucks_where(filters, columns):
+    clauses = []
+    params = []
+    date_column = LOCAL_TRUCKS_FILTER_COLUMNS["date_from"]
+    if filters.get("date_from") and date_column in columns:
+        clauses.append(f"{quote_name(date_column)}::date >= %s")
+        params.append(filters["date_from"])
+    if filters.get("date_to") and date_column in columns:
+        clauses.append(f"{quote_name(date_column)}::date <= %s")
+        params.append(filters["date_to"])
+
+    datesign_column = LOCAL_TRUCKS_FILTER_COLUMNS["datesign_from"]
+    if filters.get("datesign_from") and datesign_column in columns:
+        clauses.append(f"{quote_name(datesign_column)}::date >= %s")
+        params.append(filters["datesign_from"])
+    if filters.get("datesign_to") and datesign_column in columns:
+        clauses.append(f"{quote_name(datesign_column)}::date <= %s")
+        params.append(filters["datesign_to"])
+
+    for key in [*LOCAL_TRUCKS_SELECT_FILTERS, *LOCAL_TRUCKS_COMBOBOX_FILTERS]:
+        column = LOCAL_TRUCKS_FILTER_COLUMNS[key]
+        if column in columns and filters.get(key):
+            clauses.append(f"{quote_name(column)} = %s")
+            params.append(filters[key])
+
+    for key in LOCAL_TRUCKS_TEXT_FILTERS:
+        column = LOCAL_TRUCKS_FILTER_COLUMNS[key]
+        if column in columns and filters.get(key):
+            clauses.append(f"{quote_name(column)}::text ILIKE %s")
+            params.append(f"%{filters[key]}%")
+
+    where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    return where_sql, params
+
+
+def local_trucks_select_sql(columns):
+    select_parts = []
+    for column in columns:
+        quoted_column = quote_name(column)
+        if column in LOCAL_TRUCKS_DATE_COLUMNS:
+            select_parts.append(f"NULLIF(left({quoted_column}::text, 19), '') AS {quoted_column}")
+        else:
+            select_parts.append(quoted_column)
+    return ", ".join(select_parts)
+
+
+def local_trucks_column_labels(columns):
+    return list(columns)
+
+
+def local_trucks_order_sql(columns):
+    order_parts = []
+    if "ENTER_DATE" in columns:
+        order_parts.append(f"{quote_name('ENTER_DATE')} DESC NULLS LAST")
+    if "DATESIGN" in columns:
+        order_parts.append(f"{quote_name('DATESIGN')} DESC NULLS LAST")
+    if "source_file_path" in columns:
+        order_parts.append(f"{quote_name('source_file_path')} DESC")
+    return f"ORDER BY {', '.join(order_parts)}" if order_parts else ""
+
+
+def local_trucks_rows(params, *, limit=PAGE_SIZE, offset=0):
+    columns = get_available_local_trucks_columns()
+    available_fields = available_filter_fields(LOCAL_TRUCKS_FILTER_FIELDS, LOCAL_TRUCKS_FILTER_COLUMNS, columns)
+    filters = {field["name"]: params.get(field["name"], "").strip() for field in available_fields}
+    if not columns:
+        return columns, filters, [], 0
+    where_sql, query_params = build_local_trucks_where(filters, columns)
+    select_columns = local_trucks_select_sql(columns)
+    order_sql = local_trucks_order_sql(columns)
+    qualified_table = local_trucks_qualified_table()
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT {select_columns}
+            FROM {qualified_table}
+            {where_sql}
+            {order_sql}
+            LIMIT %s OFFSET %s
+            """,
+            [*query_params, limit, offset],
+        )
+        rows = [{"cells": row} for row in cursor.fetchall()]
+        cursor.execute(f"SELECT count(*) FROM {qualified_table} {where_sql}", query_params)
+        filtered_count = cursor.fetchone()[0]
+    return columns, filters, rows, filtered_count
+
+
+def get_local_trucks_context(params):
+    page = clean_page_number(params.get("page"))
+    offset = (page - 1) * PAGE_SIZE
+    columns, filters, rows, filtered_count = local_trucks_rows(params, limit=PAGE_SIZE, offset=offset)
+    total_pages = max(1, (filtered_count + PAGE_SIZE - 1) // PAGE_SIZE)
+    if page > total_pages:
+        page = total_pages
+        offset = (page - 1) * PAGE_SIZE
+        columns, filters, rows, filtered_count = local_trucks_rows(params, limit=PAGE_SIZE, offset=offset)
+    base_query = QueryDict(mutable=True)
+    for key, value in filters.items():
+        if value:
+            base_query[key] = value
+    download_query = base_query.copy()
+    download_query["download"] = "xlsx"
+    filter_options = local_trucks_filter_options(columns) if columns else {}
+    filter_fields = available_filter_fields(LOCAL_TRUCKS_FILTER_FIELDS, LOCAL_TRUCKS_FILTER_COLUMNS, columns)
+
+    return {
+        "columns": columns,
+        "column_labels": local_trucks_column_labels(columns),
+        "rows": rows,
+        "filters": filters,
+        "filter_labels": LOCAL_TRUCKS_FILTERS,
+        "filter_options": filter_options,
+        "filter_fields": enrich_filter_fields(filter_fields, filters, filter_options),
+        "filtered_count": filtered_count,
+        "limit": PAGE_SIZE,
+        "page": page,
+        "total_pages": total_pages,
+        "has_previous": page > 1,
+        "has_next": page < total_pages,
+        "previous_page": page - 1,
+        "next_page": page + 1,
+        "pagination_items": pagination_items(page, total_pages),
+        "page_start": offset + 1 if filtered_count else 0,
+        "page_end": min(offset + len(rows), filtered_count),
+        "query_string": base_query.urlencode(),
+        "download_query_string": download_query.urlencode(),
+        "download_limit": DOWNLOAD_LIMIT,
+        "eyebrow": "Local trucks database",
+        "heading": "Raw Local Trucks Data",
+    }
+
+
+def get_local_trucks_download_rows(params):
+    columns = get_available_local_trucks_columns()
+    available_fields = available_filter_fields(LOCAL_TRUCKS_FILTER_FIELDS, LOCAL_TRUCKS_FILTER_COLUMNS, columns)
+    filters = {field["name"]: params.get(field["name"], "").strip() for field in available_fields}
+    if not columns:
+        return [], []
+    where_sql, query_params = build_local_trucks_where(filters, columns)
+    select_columns = local_trucks_select_sql(columns)
+    qualified_table = local_trucks_qualified_table()
+    order_sql = local_trucks_order_sql(columns)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT {select_columns}
+            FROM {qualified_table}
+            {where_sql}
+            {order_sql}
+            LIMIT %s
+            """,
+            [*query_params, DOWNLOAD_LIMIT],
+        )
+        return local_trucks_column_labels(columns), cursor.fetchall()
 
 
 def dashboard_qualified_table():

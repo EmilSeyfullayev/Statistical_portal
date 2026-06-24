@@ -5,6 +5,10 @@ from apps.catalog.models import Module, Submodule
 from apps.filesync.models import StoredFile
 from apps.imports.base import BaseImporter
 from apps.imports.handlers.foreign_trucks import normalize_foreign_trucks_frame, sql_type_for
+from apps.imports.handlers.local_trucks import (
+    normalize_local_trucks_frame,
+    sql_type_for as local_trucks_sql_type_for,
+)
 from apps.imports.models import ImportJob
 from apps.imports.services.transit_merge import (
     OMITTED_SOURCE_TABLES,
@@ -12,6 +16,7 @@ from apps.imports.services.transit_merge import (
     merged_type_for,
 )
 from apps.imports.services.transit_portal import process_transit_data
+from apps.imports.services.truck_routes import split_fromto_value
 
 
 class EmptyImporter(BaseImporter):
@@ -134,6 +139,69 @@ class ForeignTrucksFramePreparationTests(TestCase):
         self.assertEqual(normalized.loc[3, "HES_NAME"], "Yüklü giriş, yüksüz çıxış və tranzit keçid üçün")
         self.assertEqual(normalized.loc[4, "FROMTO"], "Belarus-Birləşmiş Ərəb Əmirlikləri")
         self.assertEqual(normalized.loc[4, "HES_NAME"], "Yüklü giriş, yüksüz çıxış və tranzit keçid üçün")
+
+
+class LocalTrucksFramePreparationTests(TestCase):
+    def test_preparation_parses_enter_date_and_weight_without_text_fixes(self):
+        frame = pd.DataFrame(
+            [
+                {
+                    "SHORT_NAME": "AzÉ™rbaycan",
+                    "DATESIGN": "31.01.2018 23:53:58",
+                    "ENTER_DATE": "31.01.2018 23:12:40",
+                    "WEIGHT": "not-number",
+                }
+            ]
+        )
+
+        normalized = normalize_local_trucks_frame(frame)
+
+        self.assertEqual(normalized.loc[0, "SHORT_NAME"], "AzÉ™rbaycan")
+        self.assertTrue(pd.isna(normalized.loc[0, "WEIGHT"]))
+        self.assertEqual(
+            local_trucks_sql_type_for("ENTER_DATE", normalized["ENTER_DATE"]),
+            "timestamp with time zone",
+        )
+        self.assertEqual(
+            local_trucks_sql_type_for("WEIGHT", normalized["WEIGHT"]),
+            "double precision",
+        )
+        self.assertEqual(
+            local_trucks_sql_type_for("DATESIGN", normalized["DATESIGN"]),
+            "timestamp with time zone",
+        )
+
+
+class TruckRouteSplitTests(TestCase):
+    def test_split_fromto_handles_simple_routes(self):
+        self.assertEqual(split_fromto_value("Türkiyə-Azərbaycan"), ("Türkiyə", "Azərbaycan"))
+        self.assertEqual(split_fromto_value("Azərbaycan-Çin"), ("Azərbaycan", "Çin"))
+
+    def test_split_fromto_handles_hyphenated_origin_country(self):
+        self.assertEqual(
+            split_fromto_value("ABŞ-nın uzaq xırda adaları-Azərbaycan"),
+            ("ABŞ-nın uzaq xırda adaları", "Azərbaycan"),
+        )
+        self.assertEqual(
+            split_fromto_value("Kosta-Rika-Azərbaycan"),
+            ("Kosta-Rika", "Azərbaycan"),
+        )
+
+    def test_split_fromto_handles_hyphenated_destination_country(self):
+        self.assertEqual(
+            split_fromto_value("Azərbaycan-Papua-Yeni Qvineya"),
+            ("Azərbaycan", "Papua-Yeni Qvineya"),
+        )
+        self.assertEqual(
+            split_fromto_value("Azərbaycan-Şri-Lanka"),
+            ("Azərbaycan", "Şri-Lanka"),
+        )
+
+    def test_split_fromto_handles_two_hyphenated_countries(self):
+        self.assertEqual(
+            split_fromto_value("Kosta-Rika-Papua-Yeni Qvineya"),
+            ("Kosta-Rika", "Papua-Yeni Qvineya"),
+        )
 
 
 class TransitPortalProcessorTests(TestCase):
