@@ -1,15 +1,23 @@
+from types import SimpleNamespace
+
 from django.test import TestCase
 import pandas as pd
 
 from apps.catalog.models import Module, Submodule
 from apps.filesync.models import StoredFile
 from apps.imports.base import BaseImporter
-from apps.imports.handlers.foreign_trucks import normalize_foreign_trucks_frame, sql_type_for
+from apps.imports.handlers.foreign_trucks import (
+    normalize_foreign_trucks_frame,
+    prepare_frame as prepare_foreign_trucks_frame,
+    sql_type_for,
+)
 from apps.imports.handlers.local_trucks import (
     normalize_local_trucks_frame,
+    prepare_frame as prepare_local_trucks_frame,
     sql_type_for as local_trucks_sql_type_for,
 )
 from apps.imports.models import ImportJob
+from apps.imports.handlers.transit import prepare_frame as prepare_transit_frame
 from apps.imports.services.transit_merge import (
     OMITTED_SOURCE_TABLES,
     date_cast_expression,
@@ -17,6 +25,8 @@ from apps.imports.services.transit_merge import (
 )
 from apps.imports.services.transit_portal import process_transit_data
 from apps.imports.services.truck_routes import split_fromto_value
+from apps.imports.services import trucks, trucks_aggregated
+from apps.imports.services.truck_translations import translated_column, translated_output_select_sql
 
 
 class EmptyImporter(BaseImporter):
@@ -42,6 +52,31 @@ class ImportDuplicateTests(TestCase):
 
         self.assertEqual(job.status, ImportJob.STATUS_SKIPPED)
         self.assertEqual(job.duplicate_decision, "prevented")
+
+
+class UploadedFramePreparationTests(TestCase):
+    def test_unnamed_index_column_is_removed_from_truck_uploads(self):
+        stored_file = SimpleNamespace(server_path="/tmp/source.xlsx")
+        job = SimpleNamespace(id=1)
+        frame = pd.DataFrame({"Unnamed: 0": [1], "SHORT_NAME": ["Azərbaycan"], "WEIGHT": ["2"]})
+
+        local_frame, local_columns = prepare_local_trucks_frame(frame, stored_file, job, "Sheet1")
+        foreign_frame, foreign_columns = prepare_foreign_trucks_frame(frame, stored_file, job, "Sheet1")
+
+        self.assertNotIn("Unnamed: 0", local_frame.columns)
+        self.assertNotIn("Unnamed: 0", foreign_frame.columns)
+        self.assertNotIn("Unnamed: 0", local_columns)
+        self.assertNotIn("Unnamed: 0", foreign_columns)
+
+    def test_unnamed_index_column_is_removed_from_transit_uploads(self):
+        stored_file = SimpleNamespace(server_path="/tmp/source.xlsx")
+        job = SimpleNamespace(id=1)
+        frame = pd.DataFrame({"Unnamed: 0": [1], "giris_tarixi": ["05/01/2026"]})
+
+        prepared_frame, column_mapping = prepare_transit_frame(frame, stored_file, job, "Sheet1")
+
+        self.assertNotIn("unnamed_0", prepared_frame.columns)
+        self.assertNotIn("unnamed_0", column_mapping)
 
 
 class TransitMergeDateCastTests(TestCase):
@@ -121,6 +156,16 @@ class ForeignTrucksFramePreparationTests(TestCase):
                     "FROMTO": "Belarus-BirləşmişƏrəbƏmirlikləri",
                     "HES_NAME": "Yüklü giriş, yüksüzçıxış və tranzit keçid üçün",
                 },
+                {
+                    "SHORT_NAME": "Gürcüstan",
+                    "FROMTO": "İaq-Azərbaycan",
+                    "HES_NAME": "Yüklü giriş",
+                },
+                {
+                    "SHORT_NAME": "Tayvan (çinin əyaləti)",
+                    "FROMTO": "Azərbaycan-Tayvan (çinin əyaləti)",
+                    "HES_NAME": "Yüklü giriş",
+                },
             ]
         )
 
@@ -139,6 +184,9 @@ class ForeignTrucksFramePreparationTests(TestCase):
         self.assertEqual(normalized.loc[3, "HES_NAME"], "Yüklü giriş, yüksüz çıxış və tranzit keçid üçün")
         self.assertEqual(normalized.loc[4, "FROMTO"], "Belarus-Birləşmiş Ərəb Əmirlikləri")
         self.assertEqual(normalized.loc[4, "HES_NAME"], "Yüklü giriş, yüksüz çıxış və tranzit keçid üçün")
+        self.assertEqual(normalized.loc[5, "FROMTO"], "İraq-Azərbaycan")
+        self.assertEqual(normalized.loc[6, "SHORT_NAME"], "Tayvan (Çinin əyaləti)")
+        self.assertEqual(normalized.loc[6, "FROMTO"], "Azərbaycan-Tayvan (Çinin əyaləti)")
 
 
 class LocalTrucksFramePreparationTests(TestCase):
@@ -186,6 +234,10 @@ class TruckRouteSplitTests(TestCase):
             split_fromto_value("Kosta-Rika-Azərbaycan"),
             ("Kosta-Rika", "Azərbaycan"),
         )
+        self.assertEqual(
+            split_fromto_value("Sen-Pyer və Mikelon-Gürcüstan"),
+            ("Sen-Pyer və Mikelon", "Gürcüstan"),
+        )
 
     def test_split_fromto_handles_hyphenated_destination_country(self):
         self.assertEqual(
@@ -196,12 +248,78 @@ class TruckRouteSplitTests(TestCase):
             split_fromto_value("Azərbaycan-Şri-Lanka"),
             ("Azərbaycan", "Şri-Lanka"),
         )
+        self.assertEqual(
+            split_fromto_value("Azərbaycan-Çinin xüs. inz. r-nu Honkonq"),
+            ("Azərbaycan", "Çinin xüs. inz. r-nu Honkonq"),
+        )
+
+    def test_split_fromto_handles_china_sar_origin_country(self):
+        self.assertEqual(
+            split_fromto_value("Çinin xüs. inz. r-nu Honkonq-Azərbaycan"),
+            ("Çinin xüs. inz. r-nu Honkonq", "Azərbaycan"),
+        )
 
     def test_split_fromto_handles_two_hyphenated_countries(self):
         self.assertEqual(
             split_fromto_value("Kosta-Rika-Papua-Yeni Qvineya"),
             ("Kosta-Rika", "Papua-Yeni Qvineya"),
         )
+
+
+class TruckRegimeExpressionTests(TestCase):
+    def test_direction_1_or_2_domestic_route_is_other_unless_interterritorial(self):
+        other_branch = 'AND "DIRECTION" IN (1, 2) THEN \'Other\''
+        domestic_check = '"IN_OUT" = \'domestic\''
+        for module in [trucks, trucks_aggregated]:
+            expression = module.regime_expression()
+
+            self.assertIn('"DIRECTION" IN (1, 2)', expression)
+            self.assertIn("THEN 'InterTerritorial'", expression)
+            self.assertIn(other_branch, expression)
+            self.assertIn("THEN 'Domestic'", expression)
+            self.assertLess(expression.index("THEN 'Other'"), expression.index("THEN 'Domestic'"))
+            self.assertNotIn(domestic_check, expression)
+            self.assertNotIn("Inter-territorial", expression)
+
+    def test_interterritorial_customs_include_qosha_tepe(self):
+        for module in [trucks, trucks_aggregated]:
+            expression = module.interterritorial_customs_expression()
+
+            self.assertIn("Qoşa təpə", expression)
+            self.assertIn("Qosa tepe", expression)
+
+    def test_direction_8_and_9_are_domestic_in_out(self):
+        for module in [trucks, trucks_aggregated]:
+            expression = module.in_out_expression()
+
+            self.assertIn('"DIRECTION" IN (8, 9)', expression)
+            self.assertIn("THEN 'domestic'", expression)
+
+    def test_final_aggregated_columns_and_categories_are_translated(self):
+        select_sql = translated_output_select_sql(["YEAR", "MONTH", "CARRIER", "Loaded", "IN_OUT", "Regime", "FROMTO", "FROM", "TO"], trucks.quote_name)
+
+        self.assertIn('"YEAR" AS "İl"', select_sql)
+        self.assertIn("\"CARRIER\" WHEN 'Local' THEN 'Yerli'", select_sql)
+        self.assertIn('AS "Daşıyıcı"', select_sql)
+        self.assertIn('AS "Yüklü Boş"', select_sql)
+        self.assertIn('AS "Giriş çıxış"', select_sql)
+        self.assertIn('AS "Başlanğıc təyinat ölkəsi"', select_sql)
+        self.assertIn("\"Regime\" WHEN 'Transit' THEN 'Tranzit'", select_sql)
+        self.assertIn('AS "Rejim"', select_sql)
+        self.assertEqual(translated_column("COUNT"), "Say")
+
+    def test_empty_fromto_rows_are_filtered_before_truck_processing(self):
+        for module in [trucks, trucks_aggregated]:
+            where_sql = module.non_empty_fromto_where()
+
+            self.assertIn('"FROMTO" IS NOT NULL', where_sql)
+            self.assertIn("btrim(\"FROMTO\"::text) <> ''", where_sql)
+
+    def test_weight_over_50000_is_divided_before_aggregation(self):
+        for module in [trucks, trucks_aggregated]:
+            weight_sql = module.normalized_weight_sql('"WEIGHT"')
+
+            self.assertIn('WHEN "WEIGHT" > 50000 THEN "WEIGHT" / 10', weight_sql)
 
 
 class TransitPortalProcessorTests(TestCase):

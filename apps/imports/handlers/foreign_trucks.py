@@ -22,6 +22,11 @@ TRACE_COLUMNS = {
 TEXT_FIX_COLUMNS = ["SHORT_NAME", "FROMTO", "AVTO_NO", "CUST_NAME", "HES_NAME", "CONS_NAME"]
 DATETIME_COLUMNS = ["DATESIGN", "ENTER_DATE"]
 FLOAT_COLUMNS = ["WEIGHT"]
+DROP_UPLOAD_COLUMNS = {"Unnamed: 0"}
+
+
+def drop_unwanted_upload_columns(frame):
+    return frame.drop(columns=[column for column in DROP_UPLOAD_COLUMNS if column in frame.columns])
 
 HES_NAME_REPLACEMENTS = {
     "Yüksüz giriş üçıün": "Yüksüz giriş üçün",
@@ -49,6 +54,11 @@ COUNTRY_TOKEN_PATTERN = re.compile(r"(?:(?<=^)|(?<=-))(çexiya|çinin|çin|çili
 COUNTRY_SPACING_REPLACEMENTS = {
     "SuriyaƏrəb Respublikası": "Suriya Ərəb Respublikası",
     "BirləşmişƏrəbƏmirlikləri": "Birləşmiş Ərəb Əmirlikləri",
+}
+COUNTRY_VALUE_REPLACEMENTS = {
+    "İaq": "İraq",
+    "çin əyaləti": "Çin əyaləti",
+    "çinin əyaləti": "Çinin əyaləti",
 }
 
 SYMBOL_REPLACEMENTS = {
@@ -106,6 +116,8 @@ def replace_bad_symbols(value):
     value = COUNTRY_TOKEN_PATTERN.sub(lambda match: COUNTRY_TOKEN_REPLACEMENTS[match.group(1)], value)
     for bad_country, replacement in COUNTRY_SPACING_REPLACEMENTS.items():
         value = value.replace(bad_country, replacement)
+    for bad_country, replacement in COUNTRY_VALUE_REPLACEMENTS.items():
+        value = value.replace(bad_country, replacement)
     return value
 
 
@@ -146,7 +158,7 @@ def sample_has_bad_symbols(frame):
 
 
 def fix_text_columns(frame):
-    fixed = frame.copy()
+    fixed = drop_unwanted_upload_columns(frame).copy()
     for column in TEXT_FIX_COLUMNS:
         if column in fixed.columns:
             fixed[column] = fixed[column].map(lambda value, col=column: normalize_text_value(value, col))
@@ -171,8 +183,8 @@ def normalize_foreign_trucks_frame(frame):
 
 
 def prepare_frame(frame, stored_file, job, sheet_name):
-    original_columns = [str(column) for column in frame.columns]
     prepared = normalize_foreign_trucks_frame(frame)
+    original_columns = [str(column) for column in prepared.columns]
     prepared = prepared.where(pd.notnull(prepared), None)
     prepared.insert(0, "source_file_path", stored_file.server_path)
     prepared.insert(1, "source_sheet_name", sheet_name)

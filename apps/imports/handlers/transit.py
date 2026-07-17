@@ -24,6 +24,11 @@ US_DATE_TEXT_PATTERN = re.compile(r"^\d{1,2}/\d{1,2}/\d{4}$")
 COLUMN_ALIASES = {
     "mal_barkodu": "goods_id",
 }
+DROP_UPLOAD_COLUMNS = {"Unnamed: 0"}
+
+
+def drop_unwanted_upload_columns(frame):
+    return frame.drop(columns=[column for column in DROP_UPLOAD_COLUMNS if column in frame.columns])
 
 
 def normalize_identifier(value, *, default):
@@ -67,7 +72,7 @@ def sheet_name_for(path):
 
 
 def prepare_frame(frame, stored_file, job, sheet_name):
-    frame = frame.copy()
+    frame = drop_unwanted_upload_columns(frame).copy()
     used_columns = set()
     column_mapping = {}
     renamed_columns = []

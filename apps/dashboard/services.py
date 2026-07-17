@@ -260,6 +260,52 @@ LOCAL_TRUCKS_TEXT_FILTERS = [
     field["name"] for field in LOCAL_TRUCKS_FILTER_FIELDS if field["type"] == "text"
 ]
 
+PROCESSED_TRUCKS_SCHEMA = "trucks"
+PROCESSED_TRUCKS_TABLE = "trucks_aggregated"
+PROCESSED_TRUCKS_HIDDEN_COLUMNS = {"Başlanğıc təyinat ölkəsi"}
+PROCESSED_TRUCKS_COLUMNS = [
+    "Mənsubiyyət ölkəsi",
+    "Gömrük postu",
+    "İstiqamət kodu",
+    "Başlanğıc təyinat ölkəsi",
+    "Başlanğıc ölkə",
+    "Təyinat ölkə",
+    "Daşıyıcı",
+    "Yüklü Boş",
+    "Avtomobil",
+    "Giriş çıxış",
+    "Rejim",
+    "İl",
+    "Ay",
+    "Çəki",
+    "Say",
+]
+PROCESSED_TRUCKS_FILTER_COLUMNS = {
+    "year": "İl",
+    "month": "Ay",
+    "country": "Mənsubiyyət ölkəsi",
+    "customs_post": "Gömrük postu",
+    "origin_country": "Başlanğıc ölkə",
+    "destination_country": "Təyinat ölkə",
+    "carrier": "Daşıyıcı",
+    "loaded": "Yüklü Boş",
+    "in_out": "Giriş çıxış",
+    "regime": "Rejim",
+}
+PROCESSED_TRUCKS_FILTER_FIELDS = [
+    {"name": "year", "label": "İl", "type": "select"},
+    {"name": "month", "label": "Ay", "type": "select"},
+    {"name": "country", "label": "Mənsubiyyət ölkəsi", "type": "select"},
+    {"name": "customs_post", "label": "Gömrük postu", "type": "select"},
+    {"name": "origin_country", "label": "Başlanğıc ölkə", "type": "select"},
+    {"name": "destination_country", "label": "Təyinat ölkə", "type": "select"},
+    {"name": "carrier", "label": "Daşıyıcı", "type": "select"},
+    {"name": "loaded", "label": "Yüklü Boş", "type": "select"},
+    {"name": "in_out", "label": "Giriş çıxış", "type": "select"},
+    {"name": "regime", "label": "Rejim", "type": "select"},
+]
+PROCESSED_TRUCKS_FILTERS = {field["name"]: field["label"] for field in PROCESSED_TRUCKS_FILTER_FIELDS}
+
 DASHBOARD_FILTER_COLUMNS = {
     "date_from": DASHBOARD_DATE_COLUMN,
     "date_to": DASHBOARD_DATE_COLUMN,
@@ -1114,6 +1160,195 @@ def get_local_trucks_download_rows(params):
             [*query_params, DOWNLOAD_LIMIT],
         )
         return local_trucks_column_labels(columns), cursor.fetchall()
+
+
+def processed_trucks_qualified_table():
+    return f"{quote_name(PROCESSED_TRUCKS_SCHEMA)}.{quote_name(PROCESSED_TRUCKS_TABLE)}"
+
+
+def get_available_processed_trucks_columns():
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = %s
+              AND table_name = %s
+            """,
+            [PROCESSED_TRUCKS_SCHEMA, PROCESSED_TRUCKS_TABLE],
+        )
+        available = {row[0] for row in cursor.fetchall()}
+    return [
+        column
+        for column in PROCESSED_TRUCKS_COLUMNS
+        if column in available and column not in PROCESSED_TRUCKS_HIDDEN_COLUMNS
+    ]
+
+
+def processed_trucks_filter_options(columns):
+    options = {}
+    qualified_table = processed_trucks_qualified_table()
+    available_fields = available_filter_fields(
+        PROCESSED_TRUCKS_FILTER_FIELDS,
+        PROCESSED_TRUCKS_FILTER_COLUMNS,
+        columns,
+    )
+    with connection.cursor() as cursor:
+        for field in available_fields:
+            key = field["name"]
+            column = PROCESSED_TRUCKS_FILTER_COLUMNS[key]
+            quoted_column = quote_name(column)
+            cursor.execute(
+                f"""
+                SELECT DISTINCT {quoted_column}
+                FROM {qualified_table}
+                WHERE {quoted_column} IS NOT NULL AND btrim({quoted_column}::text) <> ''
+                ORDER BY {quoted_column}
+                LIMIT 500
+                """
+            )
+            options[key] = [row[0] for row in cursor.fetchall()]
+    return options
+
+
+def build_processed_trucks_where(filters, columns):
+    clauses = []
+    params = []
+    for key, column in PROCESSED_TRUCKS_FILTER_COLUMNS.items():
+        if column in columns and filters.get(key):
+            clauses.append(f"{quote_name(column)} = %s")
+            params.append(filters[key])
+    where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    return where_sql, params
+
+
+def processed_trucks_select_sql(columns):
+    return ", ".join(quote_name(column) for column in columns)
+
+
+def processed_trucks_column_labels(columns):
+    return list(columns)
+
+
+def processed_trucks_order_sql(columns):
+    order_parts = []
+    if "İl" in columns:
+        order_parts.append(f"{quote_name('İl')} DESC NULLS LAST")
+    if "Ay" in columns:
+        order_parts.append(f"{quote_name('Ay')} DESC NULLS LAST")
+    for column in ["Mənsubiyyət ölkəsi", "Gömrük postu", "Başlanğıc ölkə", "Təyinat ölkə"]:
+        if column in columns:
+            order_parts.append(quote_name(column))
+    return f"ORDER BY {', '.join(order_parts)}" if order_parts else ""
+
+
+def processed_trucks_rows(params, *, limit=PAGE_SIZE, offset=0):
+    columns = get_available_processed_trucks_columns()
+    available_fields = available_filter_fields(
+        PROCESSED_TRUCKS_FILTER_FIELDS,
+        PROCESSED_TRUCKS_FILTER_COLUMNS,
+        columns,
+    )
+    filters = {field["name"]: params.get(field["name"], "").strip() for field in available_fields}
+    if not columns:
+        return columns, filters, [], 0
+    where_sql, query_params = build_processed_trucks_where(filters, columns)
+    select_columns = processed_trucks_select_sql(columns)
+    order_sql = processed_trucks_order_sql(columns)
+    qualified_table = processed_trucks_qualified_table()
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT {select_columns}
+            FROM {qualified_table}
+            {where_sql}
+            {order_sql}
+            LIMIT %s OFFSET %s
+            """,
+            [*query_params, limit, offset],
+        )
+        rows = [{"cells": row} for row in cursor.fetchall()]
+        cursor.execute(f"SELECT count(*) FROM {qualified_table} {where_sql}", query_params)
+        filtered_count = cursor.fetchone()[0]
+    return columns, filters, rows, filtered_count
+
+
+def get_processed_trucks_context(params):
+    page = clean_page_number(params.get("page"))
+    offset = (page - 1) * PAGE_SIZE
+    columns, filters, rows, filtered_count = processed_trucks_rows(params, limit=PAGE_SIZE, offset=offset)
+    total_pages = max(1, (filtered_count + PAGE_SIZE - 1) // PAGE_SIZE)
+    if page > total_pages:
+        page = total_pages
+        offset = (page - 1) * PAGE_SIZE
+        columns, filters, rows, filtered_count = processed_trucks_rows(params, limit=PAGE_SIZE, offset=offset)
+    base_query = QueryDict(mutable=True)
+    for key, value in filters.items():
+        if value:
+            base_query[key] = value
+    download_query = base_query.copy()
+    download_query["download"] = "xlsx"
+    filter_options = processed_trucks_filter_options(columns) if columns else {}
+    filter_fields = available_filter_fields(
+        PROCESSED_TRUCKS_FILTER_FIELDS,
+        PROCESSED_TRUCKS_FILTER_COLUMNS,
+        columns,
+    )
+
+    return {
+        "columns": columns,
+        "column_labels": processed_trucks_column_labels(columns),
+        "rows": rows,
+        "filters": filters,
+        "filter_labels": PROCESSED_TRUCKS_FILTERS,
+        "filter_options": filter_options,
+        "filter_fields": enrich_filter_fields(filter_fields, filters, filter_options),
+        "filtered_count": filtered_count,
+        "limit": PAGE_SIZE,
+        "page": page,
+        "total_pages": total_pages,
+        "has_previous": page > 1,
+        "has_next": page < total_pages,
+        "previous_page": page - 1,
+        "next_page": page + 1,
+        "pagination_items": pagination_items(page, total_pages),
+        "page_start": offset + 1 if filtered_count else 0,
+        "page_end": min(offset + len(rows), filtered_count),
+        "query_string": base_query.urlencode(),
+        "download_query_string": download_query.urlencode(),
+        "download_limit": DOWNLOAD_LIMIT,
+        "eyebrow": "TIR portal database",
+        "heading": "Processed TIR Data",
+    }
+
+
+def get_processed_trucks_download_rows(params):
+    columns = get_available_processed_trucks_columns()
+    available_fields = available_filter_fields(
+        PROCESSED_TRUCKS_FILTER_FIELDS,
+        PROCESSED_TRUCKS_FILTER_COLUMNS,
+        columns,
+    )
+    filters = {field["name"]: params.get(field["name"], "").strip() for field in available_fields}
+    if not columns:
+        return [], []
+    where_sql, query_params = build_processed_trucks_where(filters, columns)
+    select_columns = processed_trucks_select_sql(columns)
+    qualified_table = processed_trucks_qualified_table()
+    order_sql = processed_trucks_order_sql(columns)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT {select_columns}
+            FROM {qualified_table}
+            {where_sql}
+            {order_sql}
+            LIMIT %s
+            """,
+            [*query_params, DOWNLOAD_LIMIT],
+        )
+        return processed_trucks_column_labels(columns), cursor.fetchall()
 
 
 def dashboard_qualified_table():

@@ -2,6 +2,11 @@ from dataclasses import dataclass
 
 from django.db import connection
 
+from apps.imports.services.truck_translations import (
+    translated_column,
+    translated_output_select_sql,
+)
+
 LOCAL_SCHEMA = "local_trucks"
 LOCAL_MERGED_TABLE = "local_trucks_merged"
 FOREIGN_SCHEMA = "foreign_trucks"
@@ -121,12 +126,23 @@ def sql_literal(value):
     return "'" + value.replace("'", "''") + "'"
 
 
+def normalized_weight_sql(column_sql):
+    return f"CASE WHEN {column_sql} > 50000 THEN {column_sql} / 10 ELSE {column_sql} END"
+
+
+def non_empty_fromto_where():
+    fromto = quote_name("FROMTO")
+    return f"{fromto} IS NOT NULL AND btrim({fromto}::text) <> ''"
+
+
 def select_for_column(column, available_columns, column_types, *, grouped=False):
     if column not in available_columns:
         return f"NULL::{column_types[column]} AS {quote_name(column)}"
     quoted = quote_name(column)
     if grouped and column == WEIGHT_COLUMN:
-        return f"SUM({quoted}) AS {quoted}"
+        return f"SUM({normalized_weight_sql(quoted)}) AS {quoted}"
+    if column == WEIGHT_COLUMN:
+        return f"{normalized_weight_sql(quoted)} AS {quoted}"
     if grouped and column in SOURCE_METADATA_COLUMNS:
         return f"MIN({quoted}) AS {quoted}"
     return quoted
@@ -150,6 +166,7 @@ def local_grouped_select_sql(columns, local_columns, column_types):
         f"SELECT {', '.join(select_parts)} "
         f"FROM {qualified_name(LOCAL_SCHEMA, LOCAL_MERGED_TABLE)} "
         f"WHERE {quote_name('DATESIGN')} IS NOT NULL "
+        f"AND {non_empty_fromto_where()} "
         f"GROUP BY {group_sql}"
     )
 
@@ -160,7 +177,8 @@ def foreign_select_sql(columns, foreign_columns, column_types):
     return (
         f"SELECT {', '.join(select_parts)} "
         f"FROM {qualified_name(FOREIGN_SCHEMA, FOREIGN_MERGED_TABLE)} "
-        f"WHERE {quote_name('DATESIGN')} IS NOT NULL"
+        f"WHERE {quote_name('DATESIGN')} IS NOT NULL "
+        f"AND {non_empty_fromto_where()}"
     )
 
 
@@ -224,7 +242,9 @@ def interterritorial_customs_expression():
         f"{cust_name} ILIKE '%Sahtaxt%' OR "
         f"{cust_name} ILIKE '%Biləsuvar%' OR "
         f"{cust_name} ILIKE '%Bilesuvar%' OR "
-        f"{cust_name} ILIKE '%Astara%'"
+        f"{cust_name} ILIKE '%Astara%' OR "
+        f"{cust_name} ILIKE '%Qoşa təpə%' OR "
+        f"{cust_name} ILIKE '%Qosa tepe%'"
     )
 
 
@@ -241,8 +261,9 @@ def regime_expression():
     interterritorial_direction = f"{direction} IN (1, 2)"
     return (
         "CASE "
-        f"WHEN {fromto} IS NULL OR {fromto}::text NOT ILIKE '%Azərbaycan%' THEN 'Transit' "
+        f"WHEN {fromto}::text NOT ILIKE '%Azərbaycan%' THEN 'Transit' "
         f"WHEN {domestic_route} AND {interterritorial_direction} AND ({interterritorial_customs_expression()}) THEN 'InterTerritorial' "
+        f"WHEN {domestic_route} AND {interterritorial_direction} THEN 'Other' "
         f"WHEN {domestic_route} THEN 'Domestic' "
         f"WHEN {in_out} = 'in' AND {to_azerbaijan} THEN 'Import' "
         f"WHEN {in_out} = 'out' AND {from_azerbaijan} THEN 'Export' "
@@ -278,7 +299,7 @@ def build_aggregated_table(cursor, columns, local_columns, foreign_columns, colu
         f"COALESCE({quote_name(WEIGHT_COLUMN)}, 0) AS {quote_name(WEIGHT_COLUMN)}",
     ])
     group_sql = ", ".join(quote_name(column) for column in group_columns)
-    output_columns = ", ".join(quote_name(column) for column in group_columns)
+    output_columns = translated_output_select_sql(group_columns, quote_name)
 
     cursor.execute(f"DROP TABLE IF EXISTS {qualified_name(TRUCKS_SCHEMA, AGGREGATED_TABLE)}")
     cursor.execute(
@@ -318,11 +339,12 @@ def build_aggregated_table(cursor, columns, local_columns, foreign_columns, colu
             SELECT
                 {', '.join(prepared_select_parts)}
             FROM classified
+            WHERE {non_empty_fromto_where()}
         )
         SELECT
             {output_columns},
-            SUM({quote_name(WEIGHT_COLUMN)}) AS {quote_name(WEIGHT_COLUMN)},
-            SUM({quote_name('COUNT')}) AS {quote_name('COUNT')}
+            SUM({quote_name(WEIGHT_COLUMN)}) AS {quote_name(translated_column(WEIGHT_COLUMN))},
+            SUM({quote_name('COUNT')}) AS {quote_name(translated_column('COUNT'))}
         FROM prepared
         GROUP BY {group_sql}
         ORDER BY {quote_name('YEAR')}, {quote_name('MONTH')}
@@ -336,7 +358,7 @@ def create_aggregated_indexes(cursor):
     for column in ["YEAR", "MONTH", "CARRIER", "Loaded", "IN_OUT", "Regime", "FROM", "TO"]:
         cursor.execute(
             f"CREATE INDEX IF NOT EXISTS {quote_name(f'{AGGREGATED_TABLE}_{column.lower()}_idx')} "
-            f"ON {table} ({quote_name(column)})"
+            f"ON {table} ({quote_name(translated_column(column))})"
         )
 
 

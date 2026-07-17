@@ -19,6 +19,7 @@ runserver.pid
 
 # Local data (large; use import commands instead)
 data_uploads/
+media/exports/
 
 # IDE / OS
 .cursor/

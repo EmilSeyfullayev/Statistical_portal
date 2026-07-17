@@ -14,6 +14,8 @@ from apps.dashboard.services import (
     get_foreign_trucks_download_rows,
     get_local_trucks_context,
     get_local_trucks_download_rows,
+    get_processed_trucks_context,
+    get_processed_trucks_download_rows,
     get_transit_download_rows,
     get_transit_corridor_report_context,
     get_transit_corridor_report_contexts,
@@ -168,6 +170,13 @@ def submodule_detail(request, module_slug, submodule_slug):
             "download_loader": get_transit_portal_download_rows,
             "sheet_title": "Transit Portal",
             "filename": "transit_data_for_portal.xlsx",
+        }
+    elif submodule.module.slug == "processed-data" and submodule.slug == "tir-lar":
+        transit_table = {
+            "context_loader": get_processed_trucks_context,
+            "download_loader": get_processed_trucks_download_rows,
+            "sheet_title": "TIR Portal",
+            "filename": "trucks_aggregated.xlsx",
         }
 
     if transit_table:

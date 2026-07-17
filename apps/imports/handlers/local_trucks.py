@@ -21,6 +21,11 @@ TRACE_COLUMNS = {
 }
 DATETIME_COLUMNS = ["DATESIGN", "ENTER_DATE"]
 FLOAT_COLUMNS = ["WEIGHT"]
+DROP_UPLOAD_COLUMNS = {"Unnamed: 0"}
+
+
+def drop_unwanted_upload_columns(frame):
+    return frame.drop(columns=[column for column in DROP_UPLOAD_COLUMNS if column in frame.columns])
 
 
 def normalize_identifier(value, *, default):
@@ -57,7 +62,7 @@ def parse_datetime_column(series):
 
 
 def normalize_local_trucks_frame(frame):
-    normalized = frame.copy()
+    normalized = drop_unwanted_upload_columns(frame).copy()
     for column in DATETIME_COLUMNS:
         if column in normalized.columns:
             normalized[column] = parse_datetime_column(normalized[column])
@@ -68,8 +73,8 @@ def normalize_local_trucks_frame(frame):
 
 
 def prepare_frame(frame, stored_file, job, sheet_name):
-    original_columns = [str(column) for column in frame.columns]
     prepared = normalize_local_trucks_frame(frame)
+    original_columns = [str(column) for column in prepared.columns]
     prepared = prepared.where(pd.notnull(prepared), None)
     prepared.insert(0, "source_file_path", stored_file.server_path)
     prepared.insert(1, "source_sheet_name", sheet_name)

@@ -12,9 +12,12 @@ COUNTRIES_WITH_DASHES = [
     "San-Marino",
     "San-Tome və Prinsipi",
     "Sen-Bartelemi",
+    "Sen-Pyer və Mikelon",
     "Sent-Lüsiya",
     "Syerra-Leone",
     "Timor-Leste",
+    "Çinin xüs. inz. r-nu Aomin (Makao)",
+    "Çinin xüs. inz. r-nu Honkonq",
     "Şri-Lanka",
 ]
 

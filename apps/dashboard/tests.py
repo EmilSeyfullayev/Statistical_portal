@@ -12,6 +12,8 @@ from apps.dashboard.services import (
     FOREIGN_TRUCKS_FILTER_FIELDS,
     LOCAL_TRUCKS_FILTER_COLUMNS,
     LOCAL_TRUCKS_FILTER_FIELDS,
+    get_available_processed_trucks_columns,
+    processed_trucks_column_labels,
     available_filter_fields,
     build_transit_dynamics_report_docx,
     build_transit_dynamics_report_pdf,
@@ -52,6 +54,25 @@ class TruckRawDataTests(TestCase):
         self.assertNotIn("perm_blank_no", field_names)
         self.assertNotIn("hes_name", field_names)
         self.assertNotIn("cons_name", field_names)
+
+    @patch("apps.dashboard.services.connection")
+    def test_processed_truck_columns_hide_fromto_derived_column(self, connection):
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.fetchall.return_value = [
+            ("Mənsubiyyət ölkəsi",),
+            ("Başlanğıc təyinat ölkəsi",),
+            ("Başlanğıc ölkə",),
+            ("Təyinat ölkə",),
+            ("İl",),
+            ("Ay",),
+        ]
+
+        columns = get_available_processed_trucks_columns()
+
+        self.assertNotIn("Başlanğıc təyinat ölkəsi", columns)
+        self.assertNotIn("Başlanğıc təyinat ölkəsi", processed_trucks_column_labels(columns))
+        self.assertIn("Başlanğıc ölkə", columns)
+        self.assertIn("Təyinat ölkə", columns)
 
     @patch("apps.dashboard.views.get_local_trucks_context")
     def test_yerli_tirlar_submodule_uses_local_trucks_context(self, get_local_trucks_context):
@@ -95,6 +116,49 @@ class TruckRawDataTests(TestCase):
         self.assertEqual(response.status_code, 200)
         get_local_trucks_context.assert_called_once()
         self.assertContains(response, "Raw Local Trucks Data")
+
+    @patch("apps.dashboard.views.get_processed_trucks_context")
+    def test_processed_tirlar_submodule_uses_processed_trucks_context(self, get_processed_trucks_context):
+        module = Module.objects.create(name="Processed Data", slug="processed-data")
+        submodule = Submodule.objects.create(module=module, name="TIR-lar", slug="tir-lar")
+        user = get_user_model().objects.create_user(username="processed-tir-user", password="pass")
+        self.client.force_login(user)
+        get_processed_trucks_context.return_value = {
+            "columns": [],
+            "column_labels": [],
+            "rows": [],
+            "filters": {},
+            "filter_labels": {},
+            "filter_options": {},
+            "filter_fields": [],
+            "filtered_count": 0,
+            "limit": 100,
+            "page": 1,
+            "total_pages": 1,
+            "has_previous": False,
+            "has_next": False,
+            "previous_page": 0,
+            "next_page": 2,
+            "pagination_items": [{"number": 1, "current": True}],
+            "page_start": 0,
+            "page_end": 0,
+            "query_string": "",
+            "download_query_string": "download=xlsx",
+            "download_limit": 500,
+            "eyebrow": "TIR portal database",
+            "heading": "Processed TIR Data",
+        }
+
+        response = self.client.get(
+            reverse(
+                "dashboard:submodule_detail",
+                kwargs={"module_slug": module.slug, "submodule_slug": submodule.slug},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        get_processed_trucks_context.assert_called_once()
+        self.assertContains(response, "Processed TIR Data")
 
 
 class TransitDataPeriodsTests(TestCase):
